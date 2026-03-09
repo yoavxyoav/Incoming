@@ -39,10 +39,10 @@ def test_categorize_multiple_areas() -> None:
 
 
 def test_standardize_removes_parens() -> None:
+    # "תל אביב (יפו)" → standardized to "תל אביב יפו", not in set → goes to Other
     geo._lamas = {"מרכז": {"תל אביב"}}
     result = geo.categorize(["תל אביב (יפו)"])
-    # after standardization parens are stripped → shouldn't match, goes to Other
-    assert "Other" in result or "מרכז" in result
+    assert "Other" in result
 
 
 def test_load_from_dict_missing_areas() -> None:

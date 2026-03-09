@@ -58,7 +58,7 @@ class ConnectionManager:
 
     async def broadcast(self, data: dict[str, object]) -> None:
         dead: set[WebSocket] = set()
-        for ws in self._clients:
+        for ws in set(self._clients):
             try:
                 await ws.send_json(data)
             except Exception:

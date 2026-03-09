@@ -35,7 +35,7 @@ def setup_logger(name: str = "oref", level: str = "INFO") -> logging.Logger:
     logger.addHandler(console)
 
     # File handler — JSON logs
-    log_dir = Path("logs")
+    log_dir = Path(__file__).parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
     file_handler = logging.FileHandler(log_dir / "oref.log", encoding="utf-8")
     file_handler.setFormatter(fmt)

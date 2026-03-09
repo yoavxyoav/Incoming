@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -28,7 +29,7 @@ def _load_from_dict(raw: dict[str, object]) -> dict[str, set[str]]:
     return result
 
 
-def load(lamas_path: str, lamas_url: str) -> None:
+async def load(lamas_path: str, lamas_url: str) -> None:
     """Load lamas geographic data; download from GitHub if not present."""
     global _lamas
     path = Path(lamas_path)
@@ -45,7 +46,7 @@ def load(lamas_path: str, lamas_url: str) -> None:
     if raw is None:
         log.info("Downloading lamas.json from %s", lamas_url)
         try:
-            resp = httpx.get(lamas_url, timeout=10)
+            resp = await asyncio.to_thread(httpx.get, lamas_url, timeout=10)
             resp.raise_for_status()
             raw = resp.json()
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +58,7 @@ def load(lamas_path: str, lamas_url: str) -> None:
             return
 
     try:
-        _lamas = _load_from_dict(raw)  # type: ignore[arg-type]
+        _lamas = _load_from_dict(raw)
         log.info("Loaded %d geographic areas", len(_lamas))
     except Exception as exc:
         log.error("Invalid lamas.json structure: %s", exc)

@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -60,7 +60,7 @@ def _is_all_clear(alert: OrefAlertRaw) -> bool:
 def _is_test(alert: OrefAlertRaw) -> bool:
     if settings.include_test_alerts:
         return False
-    return "בדיקה" in alert.data or alert.cat in ("101", "102", "103")
+    return any("בדיקה" in item for item in alert.data) or alert.cat in ("101", "102", "103")
 
 
 async def _fetch_alert(client: httpx.AsyncClient) -> Optional[OrefAlertRaw]:
@@ -90,7 +90,10 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
             try:
                 raw = await _fetch_alert(client)
 
-                if raw and not _is_test(raw) and _filter_region(raw):
+                if raw is None or _is_test(raw):
+                    if store.clear():
+                        await manager.broadcast({"type": "clear", "payload": None})
+                elif _filter_region(raw):
                     if store.is_new(raw.id):
                         event = _build_event(raw)
                         if _is_all_clear(raw):
@@ -104,9 +107,6 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                             payload = event.model_dump(mode="json")
                             await manager.broadcast({"type": "alert", "payload": payload})
                             await _notify(event)
-                else:
-                    if store.clear():
-                        await manager.broadcast({"type": "clear", "payload": None})
 
             except Exception as exc:
                 log.error("Unhandled monitor error: %s", exc)
@@ -117,34 +117,60 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
             await asyncio.sleep(settings.poll_interval)
 
 
-async def _notify(event: AlertEvent) -> None:
-    """Send optional Apprise/MQTT notifications (best-effort)."""
-    if settings.notifiers:
+_apprise_instance: Optional[Any] = None
+
+
+def _get_apprise() -> Optional[Any]:
+    """Return a shared Apprise instance (built once)."""
+    global _apprise_instance
+    if _apprise_instance is None:
         try:
-            import apprise  # type: ignore[import-untyped]
+            import apprise
 
             ap = apprise.Apprise()
             for url in settings.notifiers.split():
                 ap.add(url)
-            body = "באזורים הבאים:\n" + "\n".join(event.areas)
-            await ap.async_notify(title=event.title, body=body)
+            _apprise_instance = ap
         except ImportError:
             log.warning("apprise not installed; skipping notifications")
+    return _apprise_instance
+
+
+def _mqtt_publish(host: str, port: int, user: str, password: str, topic: str, areas: list[str]) -> None:
+    """Blocking MQTT publish — call via asyncio.to_thread."""
+    import paho.mqtt.client as mqtt
+
+    mc = mqtt.Client()
+    if user:
+        mc.username_pw_set(user, password)
+    mc.connect(host, port)
+    mc.publish(f"{topic}/data", str(areas))
+    mc.publish(topic, "on")
+    mc.disconnect()
+
+
+async def _notify(event: AlertEvent) -> None:
+    """Send optional Apprise/MQTT notifications (best-effort)."""
+    if settings.notifiers:
+        try:
+            ap = _get_apprise()
+            if ap is not None:
+                body = "באזורים הבאים:\n" + "\n".join(event.areas)
+                await ap.async_notify(title=event.title, body=body)
         except Exception as exc:
             log.error("Apprise notification error: %s", exc)
 
     if settings.mqtt_host:
         try:
-            import paho.mqtt.client as mqtt  # type: ignore[import-untyped]
-
-            topic = settings.mqtt_topic
-            mc = mqtt.Client()
-            if settings.mqtt_user:
-                mc.username_pw_set(settings.mqtt_user, settings.mqtt_pass)
-            mc.connect(settings.mqtt_host, settings.mqtt_port)
-            mc.publish(f"{topic}/data", str(event.areas))
-            mc.publish(topic, "on")
-            mc.disconnect()
+            await asyncio.to_thread(
+                _mqtt_publish,
+                settings.mqtt_host,
+                settings.mqtt_port,
+                settings.mqtt_user,
+                settings.mqtt_pass,
+                settings.mqtt_topic,
+                event.areas,
+            )
         except ImportError:
             log.warning("paho-mqtt not installed; skipping MQTT")
         except Exception as exc:

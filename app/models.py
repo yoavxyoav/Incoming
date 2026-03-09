@@ -41,13 +41,6 @@ class AlertEvent(BaseModel):
     received_at: datetime
 
 
-class WsMessage(BaseModel):
-    """WebSocket message envelope"""
-
-    type: str  # "state" | "alert" | "clear"
-    payload: Optional[dict[str, object]] = None
-
-
 class StatusResponse(BaseModel):
     current: Optional[AlertEvent]
     history: list[AlertEvent]

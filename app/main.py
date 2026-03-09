@@ -18,7 +18,7 @@ from app.store import manager, store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    geo.load(settings.lamas_path, settings.lamas_url)
+    await geo.load(settings.lamas_path, settings.lamas_url)
     task = asyncio.create_task(poll_loop(store, manager))
     log.info("Oref monitor started")
     yield
@@ -33,14 +33,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(title="Incoming", lifespan=lifespan)
 
 # Serve frontend
-_frontend = Path("frontend")
+_frontend = Path(__file__).parent.parent / "frontend"
 if _frontend.exists():
-    app.mount("/static", StaticFiles(directory="frontend"), name="static")
+    app.mount("/static", StaticFiles(directory=str(_frontend)), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> FileResponse:
-    return FileResponse("frontend/index.html")
+    return FileResponse(str(_frontend / "index.html"))
 
 
 @app.get("/health")

@@ -36,32 +36,22 @@ def test_is_test_for_hebrew_keyword() -> None:
     assert _is_test(raw) is True
 
 
-def test_filter_region_wildcard() -> None:
+def test_filter_region_wildcard(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.monitor.settings.region", "*")
     raw = make_raw(data=["אשדוד"])
-    # wildcard always passes
-    from app.config import settings
-    old = settings.region
-    settings.region = "*"
     assert _filter_region(raw) is True
-    settings.region = old
 
 
-def test_filter_region_specific_match() -> None:
-    from app.config import settings
-    old = settings.region
-    settings.region = "אשדוד"
+def test_filter_region_specific_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.monitor.settings.region", "אשדוד")
     raw = make_raw(data=["אשדוד", "אשקלון"])
     assert _filter_region(raw) is True
-    settings.region = old
 
 
-def test_filter_region_specific_no_match() -> None:
-    from app.config import settings
-    old = settings.region
-    settings.region = "חיפה"
+def test_filter_region_specific_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.monitor.settings.region", "חיפה")
     raw = make_raw(data=["תל אביב"])
     assert _filter_region(raw) is False
-    settings.region = old
 
 
 def test_build_event_fields() -> None:
