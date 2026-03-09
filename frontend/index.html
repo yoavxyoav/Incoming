@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Incoming</title>
+  <link rel="icon" href="/static/incoming.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    body { background: #0a0e1a; }
+
+    @keyframes siren {
+      0%, 100% { background: #7f1d1d; }
+      50%       { background: #991b1b; }
+    }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes dot-blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+    @keyframes led-flash {
+      0%   { background: #fff; box-shadow: 0 0 6px 2px #fff; }
+      100% { background: #4ade80; box-shadow: none; }
+    }
+
+    .alert-active { animation: siren 1s ease-in-out infinite; }
+    .pulse-dot    { animation: dot-blink 1.5s ease-in-out infinite; }
+    .fade-in      { animation: fade-in 0.3s ease-out; }
+    .led-tick     { animation: led-flash 300ms ease-out forwards; }
+
+    .he { direction: rtl; text-align: right; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+    .json-key   { color: #93c5fd; }
+    .json-str   { color: #86efac; }
+    .json-num   { color: #fca5a5; }
+    .json-bool  { color: #fbbf24; }
+    .json-null  { color: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <img src="/static/incoming.png" alt="Incoming" class="w-28 h-28 rounded-2xl object-cover shadow-lg" />
+      <div>
+        <h1 class="text-2xl font-bold text-white">Incoming</h1>
+        <p class="text-xs text-slate-500">Pikud HaOref — Real-time civil defense</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <!-- Location filter -->
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-slate-500">Filter</label>
+        <input
+          id="location-filter"
+          type="text"
+          placeholder="city, area… (AND filter)"
+          class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-slate-500 w-44"
+        />
+      </div>
+      <!-- Sound button -->
+      <button
+        id="sound-btn"
+        onclick="openSoundModal()"
+        title="Sound settings"
+        class="flex items-center gap-1.5 text-sm border border-emerald-700 hover:border-emerald-500 rounded-lg px-3 py-1.5 transition-colors"
+      >
+        <span id="sound-icon" class="text-base">🔊</span>
+        <span id="sound-label" class="text-emerald-400 text-xs">Sound on</span>
+      </button>
+      <!-- WS status -->
+      <div class="flex items-center gap-2 text-sm">
+        <span id="ws-dot" class="w-2 h-2 rounded-full bg-slate-600 pulse-dot"></span>
+        <span id="ws-label" class="text-slate-500">Connecting…</span>
+      </div>
+      <!-- Debug toggle -->
+      <button
+        onclick="toggleDebug()"
+        class="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 hover:border-slate-500 rounded px-2 py-1 transition-colors"
+      >Debug</button>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-6">
+
+    <!-- Active Alert / All Clear -->
+    <div id="alert-panel" class="rounded-xl overflow-hidden border border-slate-800 transition-all duration-500">
+      <div id="all-clear" class="p-8 text-center bg-slate-900">
+        <div class="text-5xl mb-3">✅</div>
+        <h2 class="text-xl font-semibold text-emerald-400">All Clear</h2>
+        <p class="text-slate-500 text-sm mt-1">No active alerts</p>
+      </div>
+
+      <div id="active-alert" class="hidden p-6 alert-active">
+        <div class="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-2xl">🚨</span>
+              <span id="alert-cat" class="text-xs font-medium bg-red-900 text-red-300 px-2 py-0.5 rounded-full"></span>
+            </div>
+            <h2 id="alert-title" class="text-2xl font-bold text-white he"></h2>
+            <p id="alert-desc" class="text-red-300 text-sm mt-1 he"></p>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-xs text-red-400 font-medium">Received</div>
+            <div id="alert-time" class="text-sm text-red-300 font-mono"></div>
+          </div>
+        </div>
+
+        <div id="filter-hint" class="hidden mb-3 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded px-3 py-1.5"></div>
+        <div id="alert-areas" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 text-center">
+        <div id="stat-total" class="text-2xl font-bold text-white">0</div>
+        <div class="text-xs text-slate-500 mt-1">Alerts this session</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 text-center">
+        <div id="stat-clients" class="text-2xl font-bold text-white">—</div>
+        <div class="text-xs text-slate-500 mt-1">Connected clients</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 text-center">
+        <div id="stat-last" class="text-2xl font-bold text-white">—</div>
+        <div class="text-xs text-slate-500 mt-1">Last update</div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div>
+      <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-3">Alert History</h3>
+      <div id="history-list" class="space-y-2">
+        <div id="history-empty" class="text-slate-600 text-sm text-center py-8">No alerts yet this session</div>
+      </div>
+    </div>
+
+    <!-- Debug Panel -->
+    <div id="debug-panel" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Debug — Live Oref JSON</h3>
+        <div class="flex items-center gap-3">
+          <span id="debug-ts" class="text-xs text-slate-600 font-mono"></span>
+          <button onclick="fetchRaw()" class="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-2 py-1">Refresh</button>
+        </div>
+      </div>
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-sm overflow-auto max-h-96">
+        <pre id="debug-json" class="text-slate-400 whitespace-pre-wrap break-all">Loading…</pre>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Sound Settings Modal -->
+  <div id="sound-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSoundModal()"></div>
+    <!-- Panel -->
+    <div class="relative bg-slate-900 border border-slate-700 rounded-2xl p-6 w-96 shadow-2xl space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-white">Sound Settings</h2>
+        <button onclick="closeSoundModal()" class="text-slate-500 hover:text-slate-300 text-xl leading-none">✕</button>
+      </div>
+
+      <!-- Enable toggle -->
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-slate-300">Alert sound</span>
+        <button id="modal-toggle" onclick="toggleSound()"
+          class="w-12 h-6 rounded-full transition-colors duration-200 relative bg-emerald-600">
+          <span id="modal-knob" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200" style="transform:translateX(24px)"></span>
+        </button>
+      </div>
+
+      <!-- Sound type -->
+      <div class="space-y-2">
+        <label class="text-sm text-slate-400">Sound type</label>
+        <div class="grid grid-cols-3 gap-2" id="sound-type-btns">
+          <button onclick="setSoundType('siren')"   data-type="siren"   class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">🚨 Siren</button>
+          <button onclick="setSoundType('beep')"    data-type="beep"    class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">🔔 Beep</button>
+          <button onclick="setSoundType('alarm')"   data-type="alarm"   class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">⚡ Alarm</button>
+        </div>
+      </div>
+
+      <!-- Volume -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-sm text-slate-400">Volume</label>
+          <span id="vol-value" class="text-xs text-slate-500 font-mono">50%</span>
+        </div>
+        <input id="vol-slider" type="range" min="0" max="100" value="50" oninput="setVolume(this.value)"
+          class="w-full accent-emerald-500" />
+      </div>
+
+      <!-- Test -->
+      <button onclick="testSound()"
+        class="w-full rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 py-2 text-sm text-slate-300 transition-colors">
+        ▶ Test sound
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const ALL_CLEAR_TITLES = new Set([
+      'האירוע הסתיים', 'הסתיים',
+      'ניתן לצאת מהמרחב המוגן', 'ניתן לחזור לשגרה',
+      'ניתן לצאת', 'כל הכוחות בשטח',
+    ]);
+    const WS_URL = `ws://${location.host}/ws`;
+    let reconnectDelay = 1000;
+    let ws = null;
+    let totalAlerts = 0;
+    let currentAlert = null;
+    let debugInterval = null;
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const wsDot       = document.getElementById('ws-dot');
+    const wsLabel     = document.getElementById('ws-label');
+    const allClear    = document.getElementById('all-clear');
+    const activeDiv   = document.getElementById('active-alert');
+    const alertTitle  = document.getElementById('alert-title');
+    const alertCat    = document.getElementById('alert-cat');
+    const alertDesc   = document.getElementById('alert-desc');
+    const alertTime   = document.getElementById('alert-time');
+    const alertAreas  = document.getElementById('alert-areas');
+    const filterInput = document.getElementById('location-filter');
+    const filterHint  = document.getElementById('filter-hint');
+    const historyEl   = document.getElementById('history-list');
+    const statTotal   = document.getElementById('stat-total');
+    const statLast    = document.getElementById('stat-last');
+    const debugPanel  = document.getElementById('debug-panel');
+    const debugJson   = document.getElementById('debug-json');
+    const debugTs     = document.getElementById('debug-ts');
+    const soundBtn    = document.getElementById('sound-btn');
+    const soundIcon   = document.getElementById('sound-icon');
+    const soundLabel  = document.getElementById('sound-label');
+
+    // ── Sound (Web Audio API) ─────────────────────────────────────────────────
+    let soundEnabled = true;
+    let soundType    = 'siren';  // 'siren' | 'beep' | 'alarm'
+    let volume       = 0.5;
+    let audioCtx     = null;
+    let activeNodes  = [];       // all currently playing nodes
+
+    function getCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    async function ensureRunning() {
+      const ctx = getCtx();
+      if (ctx.state === 'suspended') await ctx.resume();
+      return ctx;
+    }
+
+    function stopAlert() {
+      if (activeNodes._beepInterval) clearInterval(activeNodes._beepInterval);
+      activeNodes.forEach(n => { try { n.stop(); } catch {} });
+      activeNodes = [];
+      // Reset test button if it was active
+      if (testTimeout) {
+        clearTimeout(testTimeout);
+        testTimeout = null;
+        const btn = document.querySelector('[onclick="testSound()"]');
+        if (btn) btn.textContent = '▶ Test sound';
+      }
+    }
+
+    // ── Sound types ───────────────────────────────────────────────────────────
+    async function playSiren() {
+      const ctx = await ensureRunning();
+      if (!soundEnabled) return;
+
+      const gain = ctx.createGain();
+      gain.gain.value = volume * 0.35;
+      gain.connect(ctx.destination);
+
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = 850;
+
+      const lfo = ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.6;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 250;
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+
+      osc.connect(gain);
+      lfo.start(); osc.start();
+      activeNodes = [osc, lfo];
+    }
+
+    async function playRepeatingBeep() {
+      const ctx = await ensureRunning();
+      if (!soundEnabled) return;
+
+      function beep() {
+        if (!soundEnabled) return;
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 1050;
+        gain.gain.setValueAtTime(volume * 0.4, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.18);
+        activeNodes.push(osc);
+      }
+      beep();
+      // Repeat every 0.6s — store interval id for cleanup
+      const id = setInterval(() => { if (soundEnabled) beep(); else clearInterval(id); }, 600);
+      activeNodes._beepInterval = id;
+    }
+
+    async function playAlarm() {
+      // Two-tone klaxon: alternates between two frequencies
+      const ctx = await ensureRunning();
+      if (!soundEnabled) return;
+
+      const freqs = [660, 440];
+      let i = 0;
+      function tone() {
+        if (!soundEnabled) return;
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freqs[i % 2]; i++;
+        gain.gain.setValueAtTime(volume * 0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+        activeNodes.push(osc);
+      }
+      tone();
+      const id = setInterval(() => { if (soundEnabled) tone(); else clearInterval(id); }, 400);
+      activeNodes._beepInterval = id;
+    }
+
+    async function startAlertSound() {
+      stopAlert();
+      if (!soundEnabled) return;
+      if (soundType === 'siren') await playSiren();
+      else if (soundType === 'beep') await playRepeatingBeep();
+      else if (soundType === 'alarm') await playAlarm();
+    }
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+    function openSoundModal() { document.getElementById('sound-modal').classList.remove('hidden'); }
+    function closeSoundModal() { document.getElementById('sound-modal').classList.add('hidden'); }
+
+    function setSoundType(type) {
+      soundType = type;
+      document.querySelectorAll('.sound-type-btn').forEach(btn => {
+        const active = btn.dataset.type === type;
+        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('text-emerald-400', active);
+        btn.classList.toggle('border-slate-700', !active);
+        btn.classList.toggle('text-slate-300', !active);
+      });
+      // If something is already playing, stop it and restart with new type
+      if (activeNodes.length > 0) {
+        stopAlert();
+        if (soundEnabled) startAlertSound();
+      }
+    }
+
+    function setVolume(val) {
+      volume = val / 100;
+      document.getElementById('vol-value').textContent = val + '%';
+    }
+
+    let testTimeout = null;
+
+    async function testSound() {
+      const btn = document.querySelector('[onclick="testSound()"]');
+      if (activeNodes.length > 0 && testTimeout) {
+        // Already testing — stop it
+        clearTimeout(testTimeout);
+        testTimeout = null;
+        stopAlert();
+        btn.textContent = '▶ Test sound';
+        return;
+      }
+      const wasEnabled = soundEnabled;
+      soundEnabled = true;
+      await startAlertSound();
+      btn.textContent = '⏹ Stop';
+      testTimeout = setTimeout(() => {
+        stopAlert();
+        soundEnabled = wasEnabled;
+        btn.textContent = '▶ Test sound';
+        testTimeout = null;
+      }, 2500);
+    }
+
+    function updateSoundUI() {
+      const on = soundEnabled;
+      // Header button
+      soundIcon.textContent  = on ? '🔊' : '🔇';
+      soundLabel.textContent = on ? 'Sound on' : 'Sound off';
+      soundBtn.classList.toggle('border-emerald-700', on);
+      soundBtn.classList.toggle('border-slate-700', !on);
+      soundLabel.classList.toggle('text-emerald-400', on);
+      soundLabel.classList.toggle('text-slate-400', !on);
+      // Modal toggle — always in sync
+      document.getElementById('modal-toggle').classList.toggle('bg-emerald-600', on);
+      document.getElementById('modal-toggle').classList.toggle('bg-slate-700', !on);
+      document.getElementById('modal-knob').style.transform = on ? 'translateX(24px)' : '';
+    }
+
+    async function toggleSound() {
+      soundEnabled = !soundEnabled;
+      updateSoundUI();
+      if (soundEnabled) {
+        if (currentAlert) await startAlertSound();
+      } else {
+        stopAlert();
+      }
+    }
+
+    // Init UI to match defaults
+    setSoundType('siren');
+    updateSoundUI();
+
+    // ── Desktop Notifications ─────────────────────────────────────────────────
+    async function requestNotificationPermission() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+    }
+
+    function desktopNotify(alert) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const areas = Object.values(alert.categorized_areas).flat();
+      const body  = areas.slice(0, 5).join(', ') + (areas.length > 5 ? ` +${areas.length - 5} more` : '');
+      const n = new Notification(`🚨 ${alert.title}`, {
+        body,
+        icon: '/static/incoming.png',
+        tag:  'oref-alert',       // replaces previous notification instead of stacking
+        renotify: true,
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    }
+
+    requestNotificationPermission();
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    const fmtTime = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const fmtDate = iso => new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    function syntaxHighlight(obj) {
+      const json = JSON.stringify(obj, null, 2);
+      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) return `<span class="json-key">${match}</span>`;
+          return `<span class="json-str">${match}</span>`;
+        }
+        if (/true|false/.test(match)) return `<span class="json-bool">${match}</span>`;
+        if (/null/.test(match))       return `<span class="json-null">${match}</span>`;
+        return `<span class="json-num">${match}</span>`;
+      });
+    }
+
+    // ── Location filter ───────────────────────────────────────────────────────
+    filterInput.addEventListener('input', () => {
+      if (currentAlert) renderAreas(currentAlert.categorized_areas);
+    });
+
+    function getFilters() {
+      return filterInput.value.trim().toLowerCase()
+        .split(/[\s,،]+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    function matchesAllFilters(text, filters) {
+      return filters.every(f => text.includes(f));
+    }
+
+    function renderAreas(categorized) {
+      alertAreas.innerHTML = '';
+      const filters = getFilters();
+      let totalShown = 0, totalHidden = 0;
+
+      for (const [area, cities] of Object.entries(categorized)) {
+        const areaLower = area.toLowerCase();
+        const visible = filters.length
+          ? cities.filter(c => {
+              const hay = c.toLowerCase() + ' ' + areaLower;
+              return matchesAllFilters(hay, filters);
+            })
+          : cities;
+        const hidden = cities.length - visible.length;
+        totalHidden += hidden;
+        if (visible.length === 0 && filters.length) continue;
+        totalShown += visible.length;
+
+        const div = document.createElement('div');
+        div.className = 'bg-red-950/50 border border-red-900/40 rounded-lg px-4 py-3';
+        div.innerHTML = `
+          <div class="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">
+            ${area}${hidden > 0 ? ` <span class="text-red-700 font-normal normal-case">(${hidden} filtered)</span>` : ''}
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            ${visible.map(c => `<span class="text-sm bg-red-900/50 text-red-200 px-2 py-0.5 rounded he">${c}</span>`).join('')}
+          </div>`;
+        alertAreas.appendChild(div);
+      }
+
+      if (filters.length && totalHidden > 0) {
+        filterHint.textContent = `Filter active: showing ${totalShown} of ${totalShown + totalHidden} affected locations`;
+        filterHint.classList.remove('hidden');
+      } else {
+        filterHint.classList.add('hidden');
+      }
+    }
+
+    // ── Alert display ─────────────────────────────────────────────────────────
+    function showAlert(alert) {
+      currentAlert = alert;
+      alertTitle.textContent = alert.title;
+      alertCat.textContent   = alert.cat_label;
+      alertDesc.textContent  = alert.desc;
+      alertTime.textContent  = fmtTime(alert.received_at);
+      renderAreas(alert.categorized_areas);
+
+      allClear.classList.add('hidden');
+      activeDiv.classList.remove('hidden');
+      activeDiv.classList.add('fade-in');
+      document.title = `🚨 ${alert.title} — Incoming`;
+      statLast.textContent = fmtTime(alert.received_at);
+
+      if (soundEnabled) startAlertSound();
+      desktopNotify(alert);
+    }
+
+    function showClear() {
+      currentAlert = null;
+      allClear.classList.remove('hidden');
+      activeDiv.classList.add('hidden');
+      filterHint.classList.add('hidden');
+      document.title = '✅ All Clear — Incoming';
+      stopAlert();
+    }
+
+    // ── History grouping (30-second windows) ─────────────────────────────────
+    const GROUP_WINDOW_MS = 30_000;
+    // Each group: { alerts: [], isEnded, startTs, el }
+    const historyGroups = [];
+
+// Merge all alerts in a group into one deduplicated area map
+    function mergeAreas(alerts) {
+      const merged = {};
+      for (const a of alerts) {
+        for (const [area, cities] of Object.entries(a.categorized_areas)) {
+          if (!merged[area]) merged[area] = new Set();
+          cities.forEach(c => merged[area].add(c));
+        }
+      }
+      // Sort areas and cities, return plain arrays
+      return Object.fromEntries(
+        Object.entries(merged)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([area, set]) => [area, [...set].sort()])
+      );
+    }
+
+    function renderGroup(group) {
+      const { alerts, isEnded } = group;
+      const first    = alerts[alerts.length - 1]; // earliest
+      const last     = alerts[0];                  // most recent
+      const barColor = isEnded ? 'bg-emerald-600' : 'bg-red-600';
+      const merged   = mergeAreas(alerts);
+      const allCities = Object.values(merged).flat();
+      const preview   = allCities.slice(0, 3).join(', ') + (allCities.length > 3 ? ` +${allCities.length - 3}` : '');
+      const timeLabel = alerts.length > 1
+        ? `${fmtTime(first.received_at)} – ${fmtTime(last.received_at)}`
+        : fmtTime(first.received_at);
+
+      const el = document.createElement('div');
+      el.className = 'bg-slate-900 border border-slate-800 rounded-lg overflow-hidden fade-in cursor-pointer';
+      el.innerHTML = `
+        <div class="px-4 py-3 flex items-center gap-4 hover:bg-slate-800/50 transition-colors select-none" onclick="toggleHistoryRow(this)">
+          <div class="w-1.5 h-8 rounded-full ${barColor} shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm text-white he truncate">${first.title}</div>
+            <div class="text-xs text-slate-500 he truncate mt-0.5">${preview}</div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <div class="text-xs text-slate-500 font-mono">${timeLabel}</div>
+            <svg class="chevron w-3.5 h-3.5 text-slate-600 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </div>
+        </div>
+        <div class="expanded hidden px-4 pb-4 pt-2 border-t border-slate-800">
+          ${Object.entries(merged).map(([area, cities]) => `
+            <div class="mb-2">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">${area}</div>
+              <div class="flex flex-wrap gap-1">
+                ${cities.map(c => `<span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded he">${c}</span>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>`;
+      return el;
+    }
+
+    function addHistory(alert, isEnded = false) {
+      document.getElementById('history-empty')?.remove();
+
+      const ts = new Date(alert.received_at).getTime();
+      const lastGroup = historyGroups[0];
+
+      if (lastGroup && !lastGroup.isEnded && !isEnded &&
+          lastGroup.alerts[0].cat === alert.cat &&
+          (ts - lastGroup.startTs) <= GROUP_WINDOW_MS) {
+        // Add to existing group, re-render it in place
+        lastGroup.alerts.unshift(alert);
+        const newEl = renderGroup(lastGroup);
+        lastGroup.el.replaceWith(newEl);
+        lastGroup.el = newEl;
+      } else {
+        // New group
+        const group = { alerts: [alert], isEnded, startTs: ts, el: null };
+        const el = renderGroup(group);
+        group.el = el;
+        historyGroups.unshift(group);
+        historyEl.insertBefore(el, historyEl.firstChild);
+        // Cap visible groups
+        while (historyEl.children.length > 20) historyEl.removeChild(historyEl.lastChild);
+      }
+
+      totalAlerts++;
+      statTotal.textContent = totalAlerts;
+    }
+
+    function toggleHistoryRow(header) {
+      const expanded = header.nextElementSibling;
+      const chevron  = header.querySelector('.chevron');
+      const isOpen   = !expanded.classList.contains('hidden');
+      expanded.classList.toggle('hidden', isOpen);
+      chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    }
+
+    // ── Debug panel ───────────────────────────────────────────────────────────
+    function toggleDebug() {
+      const hidden = debugPanel.classList.toggle('hidden');
+      if (!hidden) {
+        fetchRaw();
+        debugInterval = setInterval(fetchRaw, 2000);
+      } else {
+        clearInterval(debugInterval);
+        debugInterval = null;
+      }
+    }
+
+    async function fetchRaw() {
+      try {
+        const r = await fetch('/api/raw');
+        const d = await r.json();
+        debugTs.textContent = new Date().toLocaleTimeString();
+        if (d.error) { debugJson.innerHTML = `<span class="text-red-400">${d.error}</span>`; return; }
+        debugJson.innerHTML = syntaxHighlight({ url: d.url, status: d.status_code, active_alert: d.parsed ?? '(no active alert)' });
+      } catch (e) { debugJson.textContent = String(e); }
+    }
+
+    // ── WebSocket ─────────────────────────────────────────────────────────────
+    function connect() {
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        wsDot.className     = 'w-2 h-2 rounded-full bg-emerald-400';
+        wsLabel.textContent = 'Live';
+        wsLabel.className   = 'text-emerald-400 text-sm';
+        reconnectDelay = 1000;
+      };
+
+      ws.onclose = () => {
+        wsDot.className     = 'w-2 h-2 rounded-full bg-red-500 pulse-dot';
+        wsLabel.textContent = 'Reconnecting…';
+        wsLabel.className   = 'text-red-400 text-sm';
+        setTimeout(connect, Math.min(reconnectDelay *= 1.5, 15000));
+      };
+
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+
+        if (msg.type === 'tick') {
+          wsDot.classList.remove('led-tick');
+          void wsDot.offsetWidth;
+          wsDot.classList.add('led-tick');
+          return;
+        }
+
+        if (msg.type === 'state') {
+          const { current, history } = msg.payload;
+          if (history && history.length) {
+            totalAlerts = history.length;
+            statTotal.textContent = totalAlerts;
+            historyEl.innerHTML = '';
+            historyGroups.length = 0;
+            [...history].reverse().forEach(a => addHistory(a, ALL_CLEAR_TITLES.has(a.title?.trim())));
+            statLast.textContent = fmtTime(history[0].received_at);
+          }
+          if (current) showAlert(current); else showClear();
+        } else if (msg.type === 'alert') {
+          showAlert(msg.payload);
+          addHistory(msg.payload, false);
+        } else if (msg.type === 'ended') {
+          showClear();
+          addHistory(msg.payload, true);
+        } else if (msg.type === 'clear') {
+          showClear();
+        }
+      };
+    }
+
+    connect();
+
+    setInterval(async () => {
+      try {
+        const r = await fetch('/api/status');
+        const d = await r.json();
+        document.getElementById('stat-clients').textContent = d.connected_clients;
+      } catch {}
+    }, 5000);
+  </script>
+</body>
+</html>
