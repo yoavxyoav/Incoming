@@ -78,6 +78,13 @@
         <span id="sound-icon" class="text-base">🔊</span>
         <span id="sound-label" class="text-emerald-400 text-xs">Sound on</span>
       </button>
+      <!-- Stay awake toggle -->
+      <button
+        id="wakelock-btn"
+        onclick="toggleWakeLock()"
+        title="Prevent screen from dimming while this tab is active (has no effect when tab is hidden)"
+        class="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 hover:border-slate-500 rounded px-2 py-1 transition-colors"
+      >☕ Stay awake</button>
       <!-- Settings -->
       <button
         onclick="openSettings()"
@@ -676,6 +683,48 @@
 
     requestNotificationPermission();
 
+    // ── Wake Lock ─────────────────────────────────────────────────────────────
+    // Only effective while this tab is the active/visible tab.
+    // Does NOT prevent screen sleep when tab is hidden or computer is idle.
+    let wakeLock = null;
+    let wakeLockWanted = false;
+
+    async function acquireWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; updateWakeLockUI(); });
+        updateWakeLockUI();
+      } catch {}
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) { wakeLock.release(); wakeLock = null; }
+      updateWakeLockUI();
+    }
+
+    async function toggleWakeLock() {
+      wakeLockWanted = !wakeLockWanted;
+      if (wakeLockWanted) await acquireWakeLock();
+      else releaseWakeLock();
+    }
+
+    function updateWakeLockUI() {
+      const btn = document.getElementById('wakelock-btn');
+      const on  = wakeLockWanted;
+      btn.classList.toggle('border-amber-700', on);
+      btn.classList.toggle('text-amber-400',   on);
+      btn.classList.toggle('border-slate-700', !on);
+      btn.classList.toggle('text-slate-500',   !on);
+    }
+
+    // Re-acquire when tab becomes visible if user had it enabled
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && wakeLockWanted && !wakeLock) {
+        acquireWakeLock();
+      }
+    });
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     const fmtTime = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const fmtDate = iso => new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -694,7 +743,7 @@
     }
 
     // ── Location filter ───────────────────────────────────────────────────────
-    filterInput.addEventListener('input', () => renderActivePanel());
+    filterInput.addEventListener('input', () => { filterBypassed.clear(); renderActivePanel(); });
 
     function getFilters() {
       return filterInput.value.trim().toLowerCase()
@@ -705,8 +754,10 @@
       return filters.every(f => text.includes(f));
     }
 
-    function buildAreasHtml(categorized, ended = false) {
-      const filters = getFilters();
+    const filterBypassed = new Set(); // cats whose card is showing all locations regardless of filter
+
+    function buildAreasHtml(categorized, ended = false, bypassFilter = false) {
+      const filters = bypassFilter ? [] : getFilters();
       const bg      = ended ? 'bg-emerald-950/50 border-emerald-900/40' : 'bg-red-950/50 border-red-900/40';
       const hdr     = ended ? 'text-emerald-400' : 'text-red-400';
       const hdrf    = ended ? 'text-emerald-700' : 'text-red-700';
@@ -733,7 +784,10 @@
       }
 
       const hint = filters.length && totalHidden > 0
-        ? `<div class="text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded px-3 py-1.5 mb-3">Filter active: showing ${totalShown} of ${totalShown + totalHidden} locations</div>`
+        ? `<div class="flex items-center justify-between text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded px-3 py-1.5 mb-3">
+             <span>Filter active: showing ${totalShown} of ${totalShown + totalHidden} locations</span>
+             <button data-bypass-cat data-ended="${ended}" class="ml-3 text-amber-300 hover:text-white underline underline-offset-2 shrink-0">Show all</button>
+           </div>`
         : '';
       return hint + html;
     }
@@ -781,14 +835,30 @@
                 <div class="text-sm ${timeVal} font-mono">${fmtTime(alert.received_at)}</div>
               </div>
             </div>
-            <div class="space-y-3">${buildAreasHtml(alert.categorized_areas, ended)}</div>
+            <div class="space-y-3">${buildAreasHtml(alert.categorized_areas, ended, filterBypassed.has(alert.cat))}</div>
           </div>`;
+        // Wire up "Show all" button for this card
+        const bypassBtn = card.querySelector('[data-bypass-cat]');
+        if (bypassBtn) {
+          bypassBtn.addEventListener('click', () => {
+            filterBypassed.add(alert.cat);
+            renderActivePanel();
+          });
+        }
         alertPanel.appendChild(card);
       }
     }
 
+    const alertAutoDismissTimers = {}; // cat → timer id
+    const ALERT_MAX_MS = 20 * 60 * 1000; // 20 minutes — fallback if all-clear is never received
+
     function showAlert(alert) {
       activeAlerts[alert.cat] = alert;
+      // Cancel any previous timer for this cat (e.g. alert refreshed with new id)
+      clearTimeout(alertAutoDismissTimers[alert.cat]);
+      alertAutoDismissTimers[alert.cat] = setTimeout(() => {
+        if (activeAlerts[alert.cat] && !activeAlerts[alert.cat]._is_ended) showClear(alert.cat);
+      }, ALERT_MAX_MS);
       renderActivePanel();
       if (soundEnabled) {
         const filters = getFilters();
@@ -796,7 +866,10 @@
           alert.areas.some(a => matchesAllFilters(a.toLowerCase(), filters));
         if (alertMatches) startAlertSound();
       }
-      desktopNotify(alert);
+      const filters = getFilters();
+      const matchesDisplay = !filters.length ||
+        alert.areas.some(a => matchesAllFilters(a.toLowerCase(), filters));
+      if (matchesDisplay) desktopNotify(alert);
     }
 
     function showClear(cat) {
