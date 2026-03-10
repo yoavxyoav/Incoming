@@ -52,14 +52,26 @@ async def health() -> dict[str, str]:
 async def status() -> StatusResponse:
     return StatusResponse(
         current=store.current,
-        history=store.history,
+        groups=store.groups,
         connected_clients=manager.count,
     )
 
 
+@app.get("/api/config")
+async def public_config() -> dict[str, object]:
+    """User-facing configuration defaults. Sensitive/infra fields are excluded."""
+    return {
+        "region": settings.region,
+        "include_test_alerts": settings.include_test_alerts,
+        "group_window_seconds": settings.group_window_seconds,
+        "all_clear_display_seconds": settings.all_clear_display_seconds,
+        "max_groups": settings.max_groups,
+    }
+
+
 @app.get("/api/history")
 async def history() -> dict[str, object]:
-    return {"alerts": [a.model_dump(mode="json") for a in store.history]}
+    return {"groups": [g.model_dump(mode="json") for g in store.groups]}
 
 
 @app.get("/api/raw")
@@ -92,8 +104,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     state: dict[str, object] = {
         "type": "state",
         "payload": {
-            "current": store.current.model_dump(mode="json") if store.current else None,
-            "history": [a.model_dump(mode="json") for a in store.history],
+            "current": [a.model_dump(mode="json") for a in store.current],
+            "groups": [g.model_dump(mode="json") for g in store.groups],
         },
     }
     try:

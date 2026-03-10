@@ -68,16 +68,22 @@
           class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-slate-500 w-44"
         />
       </div>
-      <!-- Sound button -->
+      <!-- Sound toggle -->
       <button
         id="sound-btn"
-        onclick="openSoundModal()"
-        title="Sound settings"
+        onclick="toggleSound()"
+        title="Toggle sound"
         class="flex items-center gap-1.5 text-sm border border-emerald-700 hover:border-emerald-500 rounded-lg px-3 py-1.5 transition-colors"
       >
         <span id="sound-icon" class="text-base">🔊</span>
         <span id="sound-label" class="text-emerald-400 text-xs">Sound on</span>
       </button>
+      <!-- Settings -->
+      <button
+        onclick="openSettings()"
+        title="Settings"
+        class="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 hover:border-slate-500 rounded px-2 py-1 transition-colors"
+      >⚙️ Settings</button>
       <!-- WS status -->
       <div class="flex items-center gap-2 text-sm">
         <span id="ws-dot" class="w-2 h-2 rounded-full bg-slate-600 pulse-dot"></span>
@@ -93,32 +99,12 @@
 
   <main class="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
-    <!-- Active Alert / All Clear -->
-    <div id="alert-panel" class="rounded-xl overflow-hidden border border-slate-800 transition-all duration-500">
-      <div id="all-clear" class="p-8 text-center bg-slate-900">
+    <!-- Active Alerts / All Clear -->
+    <div id="alert-panel" class="space-y-3">
+      <div id="all-clear" class="rounded-xl border border-slate-800 p-8 text-center bg-slate-900">
         <div class="text-5xl mb-3">✅</div>
         <h2 class="text-xl font-semibold text-emerald-400">All Clear</h2>
         <p class="text-slate-500 text-sm mt-1">No active alerts</p>
-      </div>
-
-      <div id="active-alert" class="hidden p-6 alert-active">
-        <div class="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-2xl">🚨</span>
-              <span id="alert-cat" class="text-xs font-medium bg-red-900 text-red-300 px-2 py-0.5 rounded-full"></span>
-            </div>
-            <h2 id="alert-title" class="text-2xl font-bold text-white he"></h2>
-            <p id="alert-desc" class="text-red-300 text-sm mt-1 he"></p>
-          </div>
-          <div class="text-right shrink-0">
-            <div class="text-xs text-red-400 font-medium">Received</div>
-            <div id="alert-time" class="text-sm text-red-300 font-mono"></div>
-          </div>
-        </div>
-
-        <div id="filter-hint" class="hidden mb-3 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded px-3 py-1.5"></div>
-        <div id="alert-areas" class="space-y-3"></div>
       </div>
     </div>
 
@@ -162,50 +148,108 @@
 
   </main>
 
-  <!-- Sound Settings Modal -->
-  <div id="sound-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
-    <!-- Backdrop -->
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSoundModal()"></div>
-    <!-- Panel -->
-    <div class="relative bg-slate-900 border border-slate-700 rounded-2xl p-6 w-96 shadow-2xl space-y-5">
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSettings()"></div>
+    <div class="relative bg-slate-900 border border-slate-700 rounded-2xl p-6 w-[480px] shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-white">Sound Settings</h2>
-        <button onclick="closeSoundModal()" class="text-slate-500 hover:text-slate-300 text-xl leading-none">✕</button>
+        <h2 class="text-lg font-semibold text-white">Settings</h2>
+        <button onclick="closeSettings()" class="text-slate-500 hover:text-slate-300 text-xl leading-none">✕</button>
       </div>
 
-      <!-- Enable toggle -->
-      <div class="flex items-center justify-between">
-        <span class="text-sm text-slate-300">Alert sound</span>
-        <button id="modal-toggle" onclick="toggleSound()"
-          class="w-12 h-6 rounded-full transition-colors duration-200 relative bg-emerald-600">
-          <span id="modal-knob" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200" style="transform:translateX(24px)"></span>
+      <!-- Sound -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sound</h3>
+
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-slate-300">Alert sound</span>
+          <button id="modal-toggle" onclick="toggleSound()"
+            class="w-12 h-6 rounded-full transition-colors duration-200 relative bg-emerald-600">
+            <span id="modal-knob" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200" style="transform:translateX(24px)"></span>
+          </button>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-sm text-slate-400">Sound type</label>
+          <div class="grid grid-cols-3 gap-2" id="sound-type-btns">
+            <button onclick="setSoundType('siren')"  data-type="siren"  class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">🚨 Siren</button>
+            <button onclick="setSoundType('beep')"   data-type="beep"   class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">🔔 Beep</button>
+            <button onclick="setSoundType('alarm')"  data-type="alarm"  class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">⚡ Alarm</button>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-slate-400">Volume</label>
+            <span id="vol-value" class="text-xs text-slate-500 font-mono">70%</span>
+          </div>
+          <input id="vol-slider" type="range" min="0" max="100" value="70" oninput="setVolume(this.value)" class="w-full accent-emerald-500" />
+        </div>
+
+        <button onclick="testSound()" class="w-full rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 py-2 text-sm text-slate-300 transition-colors">
+          ▶ Test sound
         </button>
       </div>
 
-      <!-- Sound type -->
-      <div class="space-y-2">
-        <label class="text-sm text-slate-400">Sound type</label>
-        <div class="grid grid-cols-3 gap-2" id="sound-type-btns">
-          <button onclick="setSoundType('siren')"   data-type="siren"   class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">🚨 Siren</button>
-          <button onclick="setSoundType('beep')"    data-type="beep"    class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">🔔 Beep</button>
-          <button onclick="setSoundType('alarm')"   data-type="alarm"   class="sound-type-btn rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 transition-colors">⚡ Alarm</button>
+      <hr class="border-slate-800" />
+
+      <!-- Display -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Display</h3>
+
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-sm text-slate-300">Region filter</div>
+            <div class="text-xs text-slate-600 mt-0.5">Filters what is shown — does not affect what the server processes</div>
+          </div>
+          <div class="flex gap-1 items-center shrink-0">
+            <input id="cfg-region" type="text" placeholder="city or *"
+              class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 w-28 focus:outline-none focus:border-slate-500" />
+            <button onclick="resetCfg('region')" title="Reset to default" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-4">
+          <div class="text-sm text-slate-300">Include test alerts</div>
+          <div class="flex gap-1 items-center">
+            <select id="cfg-include-test" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 focus:outline-none">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+            <button onclick="resetCfg('include_test_alerts')" title="Reset" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-sm text-slate-300">Group window</div>
+            <div class="text-xs text-slate-600 mt-0.5">Seconds before a new history group starts</div>
+          </div>
+          <div class="flex gap-1 items-center shrink-0">
+            <input id="cfg-group-window" type="number" min="5" max="300"
+              class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 w-20 focus:outline-none focus:border-slate-500" />
+            <span class="text-xs text-slate-600">s</span>
+            <button onclick="resetCfg('group_window_seconds')" title="Reset" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-sm text-slate-300">All-clear display</div>
+            <div class="text-xs text-slate-600 mt-0.5">How long the green card stays before dismissing</div>
+          </div>
+          <div class="flex gap-1 items-center shrink-0">
+            <input id="cfg-allclear" type="number" min="10" max="1800"
+              class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 w-20 focus:outline-none focus:border-slate-500" />
+            <span class="text-xs text-slate-600">s</span>
+            <button onclick="resetCfg('all_clear_display_seconds')" title="Reset" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
+          </div>
         </div>
       </div>
 
-      <!-- Volume -->
-      <div class="space-y-2">
-        <div class="flex items-center justify-between">
-          <label class="text-sm text-slate-400">Volume</label>
-          <span id="vol-value" class="text-xs text-slate-500 font-mono">50%</span>
-        </div>
-        <input id="vol-slider" type="range" min="0" max="100" value="50" oninput="setVolume(this.value)"
-          class="w-full accent-emerald-500" />
-      </div>
-
-      <!-- Test -->
-      <button onclick="testSound()"
-        class="w-full rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 py-2 text-sm text-slate-300 transition-colors">
-        ▶ Test sound
+      <button onclick="applySettings()"
+        class="w-full rounded-lg bg-emerald-700 hover:bg-emerald-600 py-2 text-sm font-medium text-white transition-colors">
+        Save &amp; Apply
       </button>
     </div>
   </div>
@@ -219,22 +263,47 @@
     const WS_URL = `ws://${location.host}/ws`;
     let reconnectDelay = 1000;
     let ws = null;
-    let totalAlerts = 0;
-    let currentAlert = null;
+
+    let activeAlerts = {};   // cat → AlertEvent
     let debugInterval = null;
+
+    // ── Config layer ──────────────────────────────────────────────────────────
+    let serverConfig = {
+      region: '*',
+      include_test_alerts: false,
+      group_window_seconds: 60,
+      all_clear_display_seconds: 300,
+      max_groups: 50,
+    };
+
+    function getCfg(key) {
+      const stored = localStorage.getItem('cfg_' + key);
+      if (stored !== null) return JSON.parse(stored);
+      return serverConfig[key];
+    }
+
+    function setCfg(key, value) {
+      localStorage.setItem('cfg_' + key, JSON.stringify(value));
+    }
+
+    function resetCfg(key) {
+      localStorage.removeItem('cfg_' + key);
+      populateSettingsForm();
+    }
+
+    async function loadServerConfig() {
+      try {
+        const r = await fetch('/api/config');
+        serverConfig = await r.json();
+      } catch {}
+    }
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
     const wsDot       = document.getElementById('ws-dot');
     const wsLabel     = document.getElementById('ws-label');
+    const alertPanel  = document.getElementById('alert-panel');
     const allClear    = document.getElementById('all-clear');
-    const activeDiv   = document.getElementById('active-alert');
-    const alertTitle  = document.getElementById('alert-title');
-    const alertCat    = document.getElementById('alert-cat');
-    const alertDesc   = document.getElementById('alert-desc');
-    const alertTime   = document.getElementById('alert-time');
-    const alertAreas  = document.getElementById('alert-areas');
     const filterInput = document.getElementById('location-filter');
-    const filterHint  = document.getElementById('filter-hint');
     const historyEl   = document.getElementById('history-list');
     const statTotal   = document.getElementById('stat-total');
     const statLast    = document.getElementById('stat-last');
@@ -249,8 +318,9 @@
     let soundEnabled = true;
     let soundType    = 'siren';  // 'siren' | 'beep' | 'alarm'
     let volume       = 0.5;
-    let audioCtx     = null;
-    let activeNodes  = [];       // all currently playing nodes
+    let audioCtx       = null;
+    let activeNodes    = [];       // all currently playing nodes
+    let soundStopTimeout = null;
 
     function getCtx() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -267,6 +337,7 @@
       if (activeNodes._beepInterval) clearInterval(activeNodes._beepInterval);
       activeNodes.forEach(n => { try { n.stop(); } catch {} });
       activeNodes = [];
+      if (soundStopTimeout) { clearTimeout(soundStopTimeout); soundStopTimeout = null; }
       // Reset test button if it was active
       if (testTimeout) {
         clearTimeout(testTimeout);
@@ -353,16 +424,58 @@
     }
 
     async function startAlertSound() {
-      stopAlert();
+      if (activeNodes.length > 0 || activeNodes._beepInterval) return; // already playing
       if (!soundEnabled) return;
       if (soundType === 'siren') await playSiren();
       else if (soundType === 'beep') await playRepeatingBeep();
       else if (soundType === 'alarm') await playAlarm();
+      // Auto-stop after 15 seconds
+      soundStopTimeout = setTimeout(() => { stopAlert(); soundStopTimeout = null; }, 15000);
     }
 
-    // ── Modal ─────────────────────────────────────────────────────────────────
-    function openSoundModal() { document.getElementById('sound-modal').classList.remove('hidden'); }
-    function closeSoundModal() { document.getElementById('sound-modal').classList.add('hidden'); }
+    // ── Settings modal ────────────────────────────────────────────────────────
+    function populateSettingsForm() {
+      document.getElementById('cfg-region').value       = getCfg('region') ?? '*';
+      document.getElementById('cfg-include-test').value = String(getCfg('include_test_alerts') ?? false);
+      document.getElementById('cfg-group-window').value = getCfg('group_window_seconds') ?? 60;
+      document.getElementById('cfg-allclear').value     = getCfg('all_clear_display_seconds') ?? 300;
+      const vol = Math.round((getCfg('sound_volume') ?? volume) * 100);
+      document.getElementById('vol-slider').value = vol;
+      document.getElementById('vol-value').textContent  = vol + '%';
+      setSoundType(getCfg('sound_type') ?? soundType);
+    }
+
+    function openSettings() {
+      populateSettingsForm();
+      document.getElementById('settings-modal').classList.remove('hidden');
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-modal').classList.add('hidden');
+    }
+
+    function applySettings() {
+      const region      = document.getElementById('cfg-region').value.trim() || '*';
+      const inclTest    = document.getElementById('cfg-include-test').value === 'true';
+      const groupWin    = parseInt(document.getElementById('cfg-group-window').value, 10);
+      const allClearSec = parseInt(document.getElementById('cfg-allclear').value, 10);
+
+      setCfg('region',                   region);
+      setCfg('include_test_alerts',      inclTest);
+      if (!isNaN(groupWin))    setCfg('group_window_seconds',     groupWin);
+      if (!isNaN(allClearSec)) setCfg('all_clear_display_seconds', allClearSec);
+      setCfg('sound_type',   soundType);
+      setCfg('sound_volume', volume);
+
+      // Apply filter immediately
+      filterInput.value = region === '*' ? '' : region;
+      renderActivePanel();
+      closeSettings();
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeSettings();
+    });
 
     function setSoundType(type) {
       soundType = type;
@@ -428,13 +541,13 @@
       soundEnabled = !soundEnabled;
       updateSoundUI();
       if (soundEnabled) {
-        if (currentAlert) await startAlertSound();
+        if (Object.keys(activeAlerts).length > 0) await startAlertSound();
       } else {
         stopAlert();
       }
     }
 
-    // Init UI to match defaults
+    // Init UI — will be updated again after loadServerConfig()
     setSoundType('siren');
     updateSoundUI();
 
@@ -478,9 +591,7 @@
     }
 
     // ── Location filter ───────────────────────────────────────────────────────
-    filterInput.addEventListener('input', () => {
-      if (currentAlert) renderAreas(currentAlert.categorized_areas);
-    });
+    filterInput.addEventListener('input', () => renderActivePanel());
 
     function getFilters() {
       return filterInput.value.trim().toLowerCase()
@@ -491,105 +602,111 @@
       return filters.every(f => text.includes(f));
     }
 
-    function renderAreas(categorized) {
-      alertAreas.innerHTML = '';
+    function buildAreasHtml(categorized, ended = false) {
       const filters = getFilters();
+      const bg      = ended ? 'bg-emerald-950/50 border-emerald-900/40' : 'bg-red-950/50 border-red-900/40';
+      const hdr     = ended ? 'text-emerald-400' : 'text-red-400';
+      const hdrf    = ended ? 'text-emerald-700' : 'text-red-700';
+      const chip    = ended ? 'bg-emerald-900/50 text-emerald-200' : 'bg-red-900/50 text-red-200';
       let totalShown = 0, totalHidden = 0;
+      let html = '';
 
       for (const [area, cities] of Object.entries(categorized)) {
         const areaLower = area.toLowerCase();
         const visible = filters.length
-          ? cities.filter(c => {
-              const hay = c.toLowerCase() + ' ' + areaLower;
-              return matchesAllFilters(hay, filters);
-            })
+          ? cities.filter(c => matchesAllFilters(c.toLowerCase() + ' ' + areaLower, filters))
           : cities;
         const hidden = cities.length - visible.length;
         totalHidden += hidden;
         if (visible.length === 0 && filters.length) continue;
         totalShown += visible.length;
-
-        const div = document.createElement('div');
-        div.className = 'bg-red-950/50 border border-red-900/40 rounded-lg px-4 py-3';
-        div.innerHTML = `
-          <div class="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">
-            ${area}${hidden > 0 ? ` <span class="text-red-700 font-normal normal-case">(${hidden} filtered)</span>` : ''}
+        html += `<div class="border ${bg} rounded-lg px-4 py-3">
+          <div class="text-xs font-semibold ${hdr} uppercase tracking-wider mb-2">
+            ${area}${hidden > 0 ? ` <span class="${hdrf} font-normal normal-case">(${hidden} filtered)</span>` : ''}
           </div>
           <div class="flex flex-wrap gap-1.5">
-            ${visible.map(c => `<span class="text-sm bg-red-900/50 text-red-200 px-2 py-0.5 rounded he">${c}</span>`).join('')}
-          </div>`;
-        alertAreas.appendChild(div);
+            ${visible.map(c => `<span class="text-sm ${chip} px-2 py-0.5 rounded he">${c}</span>`).join('')}
+          </div></div>`;
       }
 
-      if (filters.length && totalHidden > 0) {
-        filterHint.textContent = `Filter active: showing ${totalShown} of ${totalShown + totalHidden} affected locations`;
-        filterHint.classList.remove('hidden');
-      } else {
-        filterHint.classList.add('hidden');
+      const hint = filters.length && totalHidden > 0
+        ? `<div class="text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded px-3 py-1.5 mb-3">Filter active: showing ${totalShown} of ${totalShown + totalHidden} locations</div>`
+        : '';
+      return hint + html;
+    }
+
+    // ── Active alert panel ────────────────────────────────────────────────────
+    function renderActivePanel() {
+      // Remove existing alert cards
+      alertPanel.querySelectorAll('.active-alert-card').forEach(el => el.remove());
+
+      const alerts = Object.values(activeAlerts);
+      if (alerts.length === 0) {
+        allClear.classList.remove('hidden');
+        document.title = '✅ All Clear — Incoming';
+        return;
+      }
+
+      allClear.classList.add('hidden');
+      document.title = `🚨 ${alerts[0].title} — Incoming`;
+      statLast.textContent = fmtTime(alerts[0].received_at);
+
+      for (const alert of alerts) {
+        const ended   = !!alert._is_ended;
+        const border  = ended ? 'border-emerald-800/60' : 'border-red-900/60';
+        const anim    = ended ? '' : 'alert-active';
+        const catBg   = ended ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300';
+        const descCl  = ended ? 'text-emerald-300' : 'text-red-300';
+        const timeCl  = ended ? 'text-emerald-400' : 'text-red-400';
+        const timeVal = ended ? 'text-emerald-300' : 'text-red-300';
+        const icon    = ended ? '✅' : '🚨';
+        const card = document.createElement('div');
+        card.className = `active-alert-card rounded-xl border ${border} overflow-hidden ${anim} fade-in`;
+        card.innerHTML = `
+          <div class="p-6">
+            <div class="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-2xl">${icon}</span>
+                  <span class="text-xs font-medium ${catBg} px-2 py-0.5 rounded-full">${alert.cat_label}</span>
+                </div>
+                <h2 class="text-2xl font-bold text-white he">${alert.title}</h2>
+                <p class="${descCl} text-sm mt-1 he">${alert.desc}</p>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-xs ${timeCl} font-medium">${ended ? 'All clear' : 'Received'}</div>
+                <div class="text-sm ${timeVal} font-mono">${fmtTime(alert.received_at)}</div>
+              </div>
+            </div>
+            <div class="space-y-3">${buildAreasHtml(alert.categorized_areas, ended)}</div>
+          </div>`;
+        alertPanel.appendChild(card);
       }
     }
 
-    // ── Alert display ─────────────────────────────────────────────────────────
     function showAlert(alert) {
-      currentAlert = alert;
-      alertTitle.textContent = alert.title;
-      alertCat.textContent   = alert.cat_label;
-      alertDesc.textContent  = alert.desc;
-      alertTime.textContent  = fmtTime(alert.received_at);
-      renderAreas(alert.categorized_areas);
-
-      allClear.classList.add('hidden');
-      activeDiv.classList.remove('hidden');
-      activeDiv.classList.add('fade-in');
-      document.title = `🚨 ${alert.title} — Incoming`;
-      statLast.textContent = fmtTime(alert.received_at);
-
+      activeAlerts[alert.cat] = alert;
+      renderActivePanel();
       if (soundEnabled) startAlertSound();
       desktopNotify(alert);
     }
 
-    function showClear() {
-      currentAlert = null;
-      allClear.classList.remove('hidden');
-      activeDiv.classList.add('hidden');
-      filterHint.classList.add('hidden');
-      document.title = '✅ All Clear — Incoming';
-      stopAlert();
+    function showClear(cat) {
+      if (cat) delete activeAlerts[cat];
+      else activeAlerts = {};
+      renderActivePanel();
+      if (Object.keys(activeAlerts).length === 0) stopAlert();
     }
 
-    // ── History grouping (30-second windows) ─────────────────────────────────
-    const GROUP_WINDOW_MS = 30_000;
-    // Each group: { alerts: [], isEnded, startTs, el }
-    const historyGroups = [];
-
-// Merge all alerts in a group into one deduplicated area map
-    function mergeAreas(alerts) {
-      const merged = {};
-      for (const a of alerts) {
-        for (const [area, cities] of Object.entries(a.categorized_areas)) {
-          if (!merged[area]) merged[area] = new Set();
-          cities.forEach(c => merged[area].add(c));
-        }
-      }
-      // Sort areas and cities, return plain arrays
-      return Object.fromEntries(
-        Object.entries(merged)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([area, set]) => [area, [...set].sort()])
-      );
-    }
-
+    // ── History rendering (groups computed by backend) ────────────────────────
     function renderGroup(group) {
-      const { alerts, isEnded } = group;
-      const first    = alerts[alerts.length - 1]; // earliest
-      const last     = alerts[0];                  // most recent
-      const barColor = isEnded ? 'bg-emerald-600' : 'bg-red-600';
-      const merged   = mergeAreas(alerts);
-      const allCities = Object.values(merged).flat();
+      const barColor  = group.is_ended ? 'bg-emerald-600' : 'bg-red-600';
+      const allCities = group.areas;
       const preview   = allCities.slice(0, 3).join(', ') + (allCities.length > 3 ? ` +${allCities.length - 3}` : '');
-      const timeLabel = alerts.length > 1
-        ? `${fmtTime(first.received_at)} – ${fmtTime(last.received_at)}`
-        : fmtTime(first.received_at);
+      const from = new Date(group.from_time), to = new Date(group.to_time);
+      const timeLabel = (to - from) > 1000
+        ? `${fmtTime(group.from_time)} – ${fmtTime(group.to_time)}`
+        : fmtTime(group.from_time);
 
       const el = document.createElement('div');
       el.className = 'bg-slate-900 border border-slate-800 rounded-lg overflow-hidden fade-in cursor-pointer';
@@ -597,16 +714,16 @@
         <div class="px-4 py-3 flex items-center gap-4 hover:bg-slate-800/50 transition-colors select-none" onclick="toggleHistoryRow(this)">
           <div class="w-1.5 h-8 rounded-full ${barColor} shrink-0"></div>
           <div class="flex-1 min-w-0">
-            <div class="font-medium text-sm text-white he truncate">${first.title}</div>
+            <div class="font-medium text-sm text-white he truncate">${group.title}</div>
             <div class="text-xs text-slate-500 he truncate mt-0.5">${preview}</div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <div class="text-xs text-slate-500 font-mono">${timeLabel}</div>
+            <div class="text-xs text-slate-500 font-mono text-right w-[11.5rem] shrink-0">${timeLabel}</div>
             <svg class="chevron w-3.5 h-3.5 text-slate-600 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
           </div>
         </div>
         <div class="expanded hidden px-4 pb-4 pt-2 border-t border-slate-800">
-          ${Object.entries(merged).map(([area, cities]) => `
+          ${Object.entries(group.categorized_areas).map(([area, cities]) => `
             <div class="mb-2">
               <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">${area}</div>
               <div class="flex flex-wrap gap-1">
@@ -617,33 +734,17 @@
       return el;
     }
 
-    function addHistory(alert, isEnded = false) {
-      document.getElementById('history-empty')?.remove();
-
-      const ts = new Date(alert.received_at).getTime();
-      const lastGroup = historyGroups[0];
-
-      if (lastGroup && !lastGroup.isEnded && !isEnded &&
-          lastGroup.alerts[0].cat === alert.cat &&
-          (ts - lastGroup.startTs) <= GROUP_WINDOW_MS) {
-        // Add to existing group, re-render it in place
-        lastGroup.alerts.unshift(alert);
-        const newEl = renderGroup(lastGroup);
-        lastGroup.el.replaceWith(newEl);
-        lastGroup.el = newEl;
-      } else {
-        // New group
-        const group = { alerts: [alert], isEnded, startTs: ts, el: null };
-        const el = renderGroup(group);
-        group.el = el;
-        historyGroups.unshift(group);
-        historyEl.insertBefore(el, historyEl.firstChild);
-        // Cap visible groups
-        while (historyEl.children.length > 20) historyEl.removeChild(historyEl.lastChild);
+    function renderGroups(groups) {
+      historyEl.innerHTML = '';
+      if (!groups.length) {
+        historyEl.innerHTML = '<p id="history-empty" class="text-slate-600 text-sm">No alerts this session.</p>';
+        statTotal.textContent = '0';
+        statLast.textContent  = '—';
+        return;
       }
-
-      totalAlerts++;
-      statTotal.textContent = totalAlerts;
+      groups.slice(0, 20).forEach(g => historyEl.appendChild(renderGroup(g)));
+      statTotal.textContent = groups.length;
+      statLast.textContent  = fmtTime(groups[0].to_time);
     }
 
     function toggleHistoryRow(header) {
@@ -707,29 +808,46 @@
         }
 
         if (msg.type === 'state') {
-          const { current, history } = msg.payload;
-          if (history && history.length) {
-            totalAlerts = history.length;
-            statTotal.textContent = totalAlerts;
-            historyEl.innerHTML = '';
-            historyGroups.length = 0;
-            [...history].reverse().forEach(a => addHistory(a, ALL_CLEAR_TITLES.has(a.title?.trim())));
-            statLast.textContent = fmtTime(history[0].received_at);
-          }
-          if (current) showAlert(current); else showClear();
+          const { current, groups } = msg.payload;
+          renderGroups(groups || []);
+          activeAlerts = {};
+          for (const a of (current || [])) activeAlerts[a.cat] = a;
+          renderActivePanel();
         } else if (msg.type === 'alert') {
           showAlert(msg.payload);
-          addHistory(msg.payload, false);
         } else if (msg.type === 'ended') {
-          showClear();
-          addHistory(msg.payload, true);
-        } else if (msg.type === 'clear') {
-          showClear();
+          const p = msg.payload;
+          // Keep the card visible with green styling, then dismiss after the configured delay
+          if (activeAlerts[p.cat]) {
+            activeAlerts[p.cat] = { ...activeAlerts[p.cat], ...p, _is_ended: true };
+            renderActivePanel();
+          }
+          setTimeout(() => showClear(p.cat), p.clear_after_ms ?? 300_000);
+        } else if (msg.type === 'groups') {
+          renderGroups(msg.payload);
         }
+        // 'clear' (API went quiet) is intentionally ignored —
+        // only an explicit all-clear from Oref dismisses the active alert
       };
     }
 
-    connect();
+    // ── Startup ───────────────────────────────────────────────────────────────
+    (async () => {
+      await loadServerConfig();
+      // Apply saved preferences (localStorage overrides)
+      const savedType = getCfg('sound_type');
+      if (savedType) setSoundType(savedType);
+      const savedVol = getCfg('sound_volume');
+      if (savedVol != null) {
+        volume = savedVol;
+        const pct = Math.round(savedVol * 100);
+        document.getElementById('vol-slider').value = pct;
+        document.getElementById('vol-value').textContent = pct + '%';
+      }
+      const savedRegion = getCfg('region');
+      if (savedRegion && savedRegion !== '*') filterInput.value = savedRegion;
+      connect();
+    })();
 
     setInterval(async () => {
       try {

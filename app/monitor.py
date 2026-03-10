@@ -97,15 +97,23 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                     if store.is_new(raw.id):
                         event = _build_event(raw)
                         if _is_all_clear(raw):
-                            # "האירוע הסתיים" — record in history but clear the active alert
-                            store.set_alert(event)
-                            store.clear()
-                            payload = event.model_dump(mode="json")
-                            await manager.broadcast({"type": "ended", "payload": payload})
+                            # Only dismiss if the all-clear covers at least one area
+                            # from the active alert of the same category
+                            active_for_cat = store.get_active_by_cat(raw.cat)
+                            if active_for_cat and any(a in active_for_cat.areas for a in raw.data):
+                                store.set_alert(event, is_ended=True)
+                                store.clear(cat=raw.cat)
+                                payload = {
+                                    **event.model_dump(mode="json"),
+                                    "clear_after_ms": settings.all_clear_display_seconds * 1000,
+                                }
+                                await manager.broadcast({"type": "ended", "payload": payload})
+                                await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
                         else:
                             store.set_alert(event)
                             payload = event.model_dump(mode="json")
                             await manager.broadcast({"type": "alert", "payload": payload})
+                            await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
                             await _notify(event)
 
             except Exception as exc:

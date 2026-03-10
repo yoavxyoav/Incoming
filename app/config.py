@@ -11,8 +11,12 @@ class Settings(BaseSettings):
     # Polling
     poll_interval: float = 1.0
 
-    # History
+    # History / grouping
     max_history: int = 50
+    max_groups: int = 50
+    group_window_seconds: int = 60
+    all_clear_display_seconds: int = 300
+
 
     # Optional MQTT (disabled when host is empty)
     mqtt_host: str = ""
