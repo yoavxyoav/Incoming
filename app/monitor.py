@@ -96,15 +96,17 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                 elif _filter_region(raw):
                     if store.is_new(raw.id):
                         event = _build_event(raw)
-                        if _is_all_clear(raw) and not store.is_ended_cat(raw.cat):
-                            store.set_alert(event, is_ended=True)
-                            store.clear(cat=raw.cat)
-                            payload = {
-                                **event.model_dump(mode="json"),
-                                "clear_after_ms": settings.all_clear_display_seconds * 1000,
-                            }
-                            await manager.broadcast({"type": "ended", "payload": payload})
-                            await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
+                        if _is_all_clear(raw):
+                            if not store.is_ended_cat(raw.cat):
+                                store.set_alert(event, is_ended=True)
+                                store.clear(cat=raw.cat)
+                                payload = {
+                                    **event.model_dump(mode="json"),
+                                    "clear_after_ms": settings.all_clear_display_seconds * 1000,
+                                }
+                                await manager.broadcast({"type": "ended", "payload": payload})
+                                await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
+                            # else: duplicate all-clear already handled — skip silently
                         else:
                             store.set_alert(event)
                             payload = event.model_dump(mode="json")
