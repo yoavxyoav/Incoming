@@ -29,6 +29,7 @@ class AlertStore:
         self._active: dict[str, AlertEvent] = {}   # cat → AlertEvent
         self._history: deque[AlertEvent] = deque(maxlen=max_history)
         self._seen_ids: set[str] = set()
+        self._ended_cats: set[str] = set()         # cats cleared but not yet re-alerted
         self._groups: list[AlertGroup] = []
 
     def is_new(self, alert_id: str) -> bool:
@@ -37,10 +38,17 @@ class AlertStore:
     def get_active_by_cat(self, cat: str) -> Optional[AlertEvent]:
         return self._active.get(cat)
 
+    def is_ended_cat(self, cat: str) -> bool:
+        """True if this cat was already all-cleared and no new alert has arrived since."""
+        return cat in self._ended_cats
+
     def set_alert(self, alert: AlertEvent, is_ended: bool = False) -> None:
         self._seen_ids.add(alert.id)
         if not is_ended:
             self._active[alert.cat] = alert
+            self._ended_cats.discard(alert.cat)  # new alert resets ended state
+        else:
+            self._ended_cats.add(alert.cat)
         self._history.appendleft(alert)
         self._update_groups(alert, is_ended)
         log.info("Alert recorded id=%s cat=%s is_ended=%s areas=%d", alert.id, alert.cat, is_ended, len(alert.areas))

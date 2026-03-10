@@ -133,16 +133,32 @@
     </div>
 
     <!-- Debug Panel -->
-    <div id="debug-panel" class="hidden">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Debug — Live Oref JSON</h3>
-        <div class="flex items-center gap-3">
-          <span id="debug-ts" class="text-xs text-slate-600 font-mono"></span>
-          <button onclick="fetchRaw()" class="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-2 py-1">Refresh</button>
+    <div id="debug-panel" class="hidden space-y-4">
+      <!-- Simulation controls — only on localhost -->
+      <div id="sim-controls" class="hidden p-4 bg-slate-900 border border-amber-900/40 rounded-xl space-y-3">
+        <div class="text-xs font-semibold text-amber-500 uppercase tracking-wider">⚠ Simulation</div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="simAlert('1')"  class="text-xs bg-red-900/60 hover:bg-red-800/60 border border-red-800 text-red-300 rounded px-3 py-1.5">🚀 Rockets</button>
+          <button onclick="simAlert('2')"  class="text-xs bg-red-900/60 hover:bg-red-800/60 border border-red-800 text-red-300 rounded px-3 py-1.5">🛸 UAV</button>
+          <button onclick="simAlert('10')" class="text-xs bg-red-900/60 hover:bg-red-800/60 border border-red-800 text-red-300 rounded px-3 py-1.5">🔫 Infiltration</button>
+          <button onclick="simClear('1')"  class="text-xs bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-800 text-emerald-300 rounded px-3 py-1.5">✅ All-clear rockets</button>
+          <button onclick="simClear('2')"  class="text-xs bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-800 text-emerald-300 rounded px-3 py-1.5">✅ All-clear UAV</button>
+          <button onclick="simClear('10')" class="text-xs bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-800 text-emerald-300 rounded px-3 py-1.5">✅ All-clear infiltration</button>
         </div>
+        <div id="sim-status" class="text-xs text-slate-600 font-mono h-4"></div>
       </div>
-      <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-sm overflow-auto max-h-96">
-        <pre id="debug-json" class="text-slate-400 whitespace-pre-wrap break-all">Loading…</pre>
+
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Debug — Live Oref JSON</h3>
+          <div class="flex items-center gap-3">
+            <span id="debug-ts" class="text-xs text-slate-600 font-mono"></span>
+            <button onclick="fetchRaw()" class="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-2 py-1">Refresh</button>
+          </div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-sm overflow-auto max-h-96">
+          <pre id="debug-json" class="text-slate-400 whitespace-pre-wrap break-all">Loading…</pre>
+        </div>
       </div>
     </div>
 
@@ -186,9 +202,38 @@
           <input id="vol-slider" type="range" min="0" max="100" value="70" oninput="setVolume(this.value)" class="w-full accent-emerald-500" />
         </div>
 
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-300">Sound follows filter</div>
+            <div class="text-xs text-slate-600 mt-0.5">Only alert audibly for locations matching your filter</div>
+          </div>
+          <button id="sound-filter-toggle" onclick="toggleSoundFollowsFilter()"
+            class="w-12 h-6 rounded-full transition-colors duration-200 relative bg-slate-700">
+            <span id="sound-filter-knob" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200"></span>
+          </button>
+        </div>
+
         <button onclick="testSound()" class="w-full rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 py-2 text-sm text-slate-300 transition-colors">
           ▶ Test sound
         </button>
+      </div>
+
+      <hr class="border-slate-800" />
+
+      <!-- Notifications -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Notifications</h3>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-300">Desktop alerts</div>
+            <div class="text-xs text-slate-600 mt-0.5">Browser pop-up on new alert (requires permission)</div>
+          </div>
+          <button id="desktop-toggle" onclick="toggleDesktopAlerts()"
+            class="w-12 h-6 rounded-full transition-colors duration-200 relative bg-emerald-600">
+            <span id="desktop-knob" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200" style="transform:translateX(24px)"></span>
+          </button>
+        </div>
       </div>
 
       <hr class="border-slate-800" />
@@ -255,11 +300,6 @@
   </div>
 
   <script>
-    const ALL_CLEAR_TITLES = new Set([
-      'האירוע הסתיים', 'הסתיים',
-      'ניתן לצאת מהמרחב המוגן', 'ניתן לחזור לשגרה',
-      'ניתן לצאת', 'כל הכוחות בשטח',
-    ]);
     const WS_URL = `ws://${location.host}/ws`;
     let reconnectDelay = 1000;
     let ws = null;
@@ -295,6 +335,9 @@
       try {
         const r = await fetch('/api/config');
         serverConfig = await r.json();
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+          document.getElementById('sim-controls').classList.remove('hidden');
+        }
       } catch {}
     }
 
@@ -315,7 +358,8 @@
     const soundLabel  = document.getElementById('sound-label');
 
     // ── Sound (Web Audio API) ─────────────────────────────────────────────────
-    let soundEnabled = true;
+    let soundEnabled      = true;
+    let soundFollowsFilter = false;  // if true, sound only fires when alert matches the location filter
     let soundType    = 'siren';  // 'siren' | 'beep' | 'alarm'
     let volume       = 0.5;
     let audioCtx       = null;
@@ -423,6 +467,30 @@
       activeNodes._beepInterval = id;
     }
 
+    async function playAllClearSound() {
+      if (!soundEnabled) return;
+      const ctx = await ensureRunning();
+      // Plays on its own independent nodes — never touches activeNodes,
+      // so it doesn't interfere with an ongoing alert sound on another cat.
+      // Three ascending soft chime notes: C5 → E5 → G5
+      const notes = [523.25, 659.25, 783.99];
+      notes.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.22;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(volume * 0.4, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.6);
+        // Deliberately not pushed to activeNodes
+      });
+    }
+
     async function startAlertSound() {
       if (activeNodes.length > 0 || activeNodes._beepInterval) return; // already playing
       if (!soundEnabled) return;
@@ -443,6 +511,8 @@
       document.getElementById('vol-slider').value = vol;
       document.getElementById('vol-value').textContent  = vol + '%';
       setSoundType(getCfg('sound_type') ?? soundType);
+      updateDesktopToggleUI();
+      updateSoundFollowsFilterUI();
     }
 
     function openSettings() {
@@ -522,6 +592,19 @@
       }, 2500);
     }
 
+    function updateSoundFollowsFilterUI() {
+      const on = soundFollowsFilter;
+      document.getElementById('sound-filter-toggle').classList.toggle('bg-emerald-600', on);
+      document.getElementById('sound-filter-toggle').classList.toggle('bg-slate-700', !on);
+      document.getElementById('sound-filter-knob').style.transform = on ? 'translateX(24px)' : '';
+    }
+
+    function toggleSoundFollowsFilter() {
+      soundFollowsFilter = !soundFollowsFilter;
+      setCfg('sound_follows_filter', soundFollowsFilter);
+      updateSoundFollowsFilterUI();
+    }
+
     function updateSoundUI() {
       const on = soundEnabled;
       // Header button
@@ -539,6 +622,7 @@
 
     async function toggleSound() {
       soundEnabled = !soundEnabled;
+      setCfg('sound_enabled', soundEnabled);
       updateSoundUI();
       if (soundEnabled) {
         if (Object.keys(activeAlerts).length > 0) await startAlertSound();
@@ -558,7 +642,26 @@
       }
     }
 
+    let desktopAlertsEnabled = true;
+
+    function updateDesktopToggleUI() {
+      const on = desktopAlertsEnabled;
+      document.getElementById('desktop-toggle').classList.toggle('bg-emerald-600', on);
+      document.getElementById('desktop-toggle').classList.toggle('bg-slate-700', !on);
+      document.getElementById('desktop-knob').style.transform = on ? 'translateX(24px)' : '';
+    }
+
+    async function toggleDesktopAlerts() {
+      desktopAlertsEnabled = !desktopAlertsEnabled;
+      if (desktopAlertsEnabled && 'Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      setCfg('desktop_alerts', desktopAlertsEnabled);
+      updateDesktopToggleUI();
+    }
+
     function desktopNotify(alert) {
+      if (!desktopAlertsEnabled) return;
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
       const areas = Object.values(alert.categorized_areas).flat();
       const body  = areas.slice(0, 5).join(', ') + (areas.length > 5 ? ` +${areas.length - 5} more` : '');
@@ -621,10 +724,10 @@
         if (visible.length === 0 && filters.length) continue;
         totalShown += visible.length;
         html += `<div class="border ${bg} rounded-lg px-4 py-3">
-          <div class="text-xs font-semibold ${hdr} uppercase tracking-wider mb-2">
+          <div class="text-xs font-semibold ${hdr} uppercase tracking-wider mb-2 text-right">
             ${area}${hidden > 0 ? ` <span class="${hdrf} font-normal normal-case">(${hidden} filtered)</span>` : ''}
           </div>
-          <div class="flex flex-wrap gap-1.5">
+          <div class="flex flex-wrap gap-1.5 justify-end">
             ${visible.map(c => `<span class="text-sm ${chip} px-2 py-0.5 rounded he">${c}</span>`).join('')}
           </div></div>`;
       }
@@ -668,7 +771,7 @@
               <div>
                 <div class="flex items-center gap-2 mb-1">
                   <span class="text-2xl">${icon}</span>
-                  <span class="text-xs font-medium ${catBg} px-2 py-0.5 rounded-full">${alert.cat_label}</span>
+                  <span class="text-xs font-medium ${catBg} px-2 py-0.5 rounded-full">${ended ? '✅ ' + alert.cat_label : alert.cat_label}</span>
                 </div>
                 <h2 class="text-2xl font-bold text-white he">${alert.title}</h2>
                 <p class="${descCl} text-sm mt-1 he">${alert.desc}</p>
@@ -687,7 +790,12 @@
     function showAlert(alert) {
       activeAlerts[alert.cat] = alert;
       renderActivePanel();
-      if (soundEnabled) startAlertSound();
+      if (soundEnabled) {
+        const filters = getFilters();
+        const alertMatches = !soundFollowsFilter || !filters.length ||
+          alert.areas.some(a => matchesAllFilters(a.toLowerCase(), filters));
+        if (alertMatches) startAlertSound();
+      }
       desktopNotify(alert);
     }
 
@@ -725,8 +833,8 @@
         <div class="expanded hidden px-4 pb-4 pt-2 border-t border-slate-800">
           ${Object.entries(group.categorized_areas).map(([area, cities]) => `
             <div class="mb-2">
-              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">${area}</div>
-              <div class="flex flex-wrap gap-1">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 text-right">${area}</div>
+              <div class="flex flex-wrap gap-1 justify-end">
                 ${cities.map(c => `<span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded he">${c}</span>`).join('')}
               </div>
             </div>`).join('')}
@@ -753,6 +861,21 @@
       const isOpen   = !expanded.classList.contains('hidden');
       expanded.classList.toggle('hidden', isOpen);
       chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    }
+
+    // ── Simulation ────────────────────────────────────────────────────────────
+    async function simAlert(cat) {
+      const r = await fetch(`/api/sim/alert?cat=${cat}`, { method: 'POST' });
+      const d = await r.json();
+      document.getElementById('sim-status').textContent =
+        r.ok ? `✓ Injected: ${d.title}` : `✗ ${d.detail}`;
+    }
+
+    async function simClear(cat) {
+      const r = await fetch(`/api/sim/all-clear?cat=${cat}`, { method: 'POST' });
+      const d = await r.json();
+      document.getElementById('sim-status').textContent =
+        r.ok ? `✓ All-clear sent for cat ${d.cat}` : `✗ ${d.detail}`;
     }
 
     // ── Debug panel ───────────────────────────────────────────────────────────
@@ -817,11 +940,12 @@
           showAlert(msg.payload);
         } else if (msg.type === 'ended') {
           const p = msg.payload;
-          // Keep the card visible with green styling, then dismiss after the configured delay
-          if (activeAlerts[p.cat]) {
-            activeAlerts[p.cat] = { ...activeAlerts[p.cat], ...p, _is_ended: true };
-            renderActivePanel();
-          }
+          // Merge into existing card or create one from the payload — always show green card
+          // Preserve original cat_label so the badge says which threat was cleared
+          const _prev = activeAlerts[p.cat] || {};
+          activeAlerts[p.cat] = { ..._prev, ...p, _is_ended: true, cat_label: _prev.cat_label || p.cat_label };
+          renderActivePanel();
+          playAllClearSound(); // independent channel — does not cancel other active alert sounds
           setTimeout(() => showClear(p.cat), p.clear_after_ms ?? 300_000);
         } else if (msg.type === 'groups') {
           renderGroups(msg.payload);
@@ -846,6 +970,12 @@
       }
       const savedRegion = getCfg('region');
       if (savedRegion && savedRegion !== '*') filterInput.value = savedRegion;
+      const savedDesktop = getCfg('desktop_alerts');
+      if (savedDesktop != null) desktopAlertsEnabled = savedDesktop;
+      const savedSoundFilter = getCfg('sound_follows_filter');
+      if (savedSoundFilter != null) { soundFollowsFilter = savedSoundFilter; updateSoundFollowsFilterUI(); }
+      const savedSoundEnabled = getCfg('sound_enabled');
+      if (savedSoundEnabled != null) { soundEnabled = savedSoundEnabled; updateSoundUI(); }
       connect();
     })();
 
