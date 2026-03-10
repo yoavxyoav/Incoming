@@ -945,7 +945,13 @@
           const _prev = activeAlerts[p.cat] || {};
           activeAlerts[p.cat] = { ..._prev, ...p, _is_ended: true, cat_label: _prev.cat_label || p.cat_label };
           renderActivePanel();
-          playAllClearSound(); // independent channel — does not cancel other active alert sounds
+          // Play chime only if sound is on and the alert matches the filter (same rule as incoming alerts)
+          if (soundEnabled) {
+            const filters = getFilters();
+            const matches = !soundFollowsFilter || !filters.length ||
+              p.areas.some(a => matchesAllFilters(a.toLowerCase(), filters));
+            if (matches) playAllClearSound();
+          }
           setTimeout(() => showClear(p.cat), p.clear_after_ms ?? 300_000);
         } else if (msg.type === 'groups') {
           renderGroups(msg.payload);
