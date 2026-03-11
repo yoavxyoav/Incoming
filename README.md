@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="incoming.png" alt="Incoming" width="120" />
+</p>
+
 # Oref Alert Monitor
 
 Real-time Israeli civil defense alert monitor with a live web dashboard.
