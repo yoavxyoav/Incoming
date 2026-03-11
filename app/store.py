@@ -54,7 +54,39 @@ class AlertStore:
         log.info("Alert recorded id=%s cat=%s is_ended=%s areas=%d", alert.id, alert.cat, is_ended, len(alert.areas))
 
     def _update_groups(self, event: AlertEvent, is_ended: bool) -> None:
-        if self._groups and not self._groups[0].is_ended and not is_ended:
+        if is_ended:
+            # Mark the most recent non-ended group for this cat as resolved (in-place).
+            # This turns the original red alert green rather than creating a duplicate entry.
+            for i, g in enumerate(self._groups):
+                if g.cat == event.cat and not g.is_ended:
+                    self._groups[i] = AlertGroup(
+                        cat=g.cat,
+                        cat_label=g.cat_label,
+                        title=g.title,
+                        from_time=g.from_time,
+                        to_time=event.received_at,
+                        areas=g.areas,
+                        categorized_areas=g.categorized_areas,
+                        is_ended=True,
+                    )
+                    return
+            # No matching group found (e.g. server restarted) — create a new entry.
+            self._groups.insert(0, AlertGroup(
+                cat=event.cat,
+                cat_label=event.cat_label,
+                title=event.title,
+                from_time=event.received_at,
+                to_time=event.received_at,
+                areas=sorted(event.areas),
+                categorized_areas=event.categorized_areas,
+                is_ended=True,
+            ))
+            if len(self._groups) > settings.max_groups:
+                self._groups.pop()
+            return
+
+        # Regular (non-ended) alert — merge into current group or start a new one.
+        if self._groups and not self._groups[0].is_ended:
             last = self._groups[0]
             delta = (event.received_at - last.to_time).total_seconds()
             if last.cat == event.cat and delta <= settings.group_window_seconds:
@@ -77,7 +109,7 @@ class AlertStore:
             to_time=event.received_at,
             areas=sorted(event.areas),
             categorized_areas=event.categorized_areas,
-            is_ended=is_ended,
+            is_ended=False,
         ))
         if len(self._groups) > settings.max_groups:
             self._groups.pop()

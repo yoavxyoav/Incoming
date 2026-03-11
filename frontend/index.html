@@ -687,7 +687,7 @@
     // Only effective while this tab is the active/visible tab.
     // Does NOT prevent screen sleep when tab is hidden or computer is idle.
     let wakeLock = null;
-    let wakeLockWanted = false;
+    let wakeLockWanted = true;
 
     async function acquireWakeLock() {
       if (!('wakeLock' in navigator)) return;
@@ -1055,6 +1055,7 @@
       if (savedSoundFilter != null) { soundFollowsFilter = savedSoundFilter; updateSoundFollowsFilterUI(); }
       const savedSoundEnabled = getCfg('sound_enabled');
       if (savedSoundEnabled != null) { soundEnabled = savedSoundEnabled; updateSoundUI(); }
+      acquireWakeLock();
       connect();
     })();
 
