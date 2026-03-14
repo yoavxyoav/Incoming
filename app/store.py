@@ -1,4 +1,5 @@
 from collections import deque
+from datetime import datetime
 from typing import Optional
 
 from fastapi import WebSocket
@@ -31,6 +32,7 @@ class AlertStore:
         self._seen_ids: set[str] = set()
         self._ended_cats: set[str] = set()         # cats cleared but not yet re-alerted
         self._groups: list[AlertGroup] = []
+        self._resolved: dict[tuple[str, str], datetime] = {}  # (cat, city) → time of most recent all-clear
 
     def is_new(self, alert_id: str) -> bool:
         return alert_id not in self._seen_ids
@@ -62,7 +64,7 @@ class AlertStore:
                     self._groups[i] = AlertGroup(
                         cat=g.cat,
                         cat_label=g.cat_label,
-                        title=g.title,
+                        title=g.title,  # keep original alert title for context
                         from_time=g.from_time,
                         to_time=event.received_at,
                         areas=g.areas,
@@ -114,6 +116,11 @@ class AlertStore:
         if len(self._groups) > settings.max_groups:
             self._groups.pop()
 
+    def clear_groups(self) -> None:
+        """Clear the history groups list and resolution timestamps."""
+        self._groups.clear()
+        self._resolved.clear()
+
     def clear(self, cat: Optional[str] = None) -> bool:
         """Clear one category (by cat) or all active alerts. Returns True if anything changed."""
         if cat is not None:
@@ -136,9 +143,24 @@ class AlertStore:
     def history(self) -> list[AlertEvent]:
         return list(self._history)
 
+    def resolve_areas(self, cat: str, areas: list[str], at: datetime) -> None:
+        """Mark cities as resolved for a specific category (timestamp only moves forward)."""
+        for city in areas:
+            key = (cat, city)
+            if key not in self._resolved or self._resolved[key] < at:
+                self._resolved[key] = at
+
     @property
     def groups(self) -> list[AlertGroup]:
-        return list(self._groups)
+        """Return groups with resolved_areas computed from the per-category resolution map."""
+        result = []
+        for g in self._groups:
+            resolved = [
+                city for city in g.areas
+                if (g.cat, city) in self._resolved and self._resolved[(g.cat, city)] >= g.from_time
+            ]
+            result.append(g.model_copy(update={"resolved_areas": resolved}))
+        return result
 
 
 class ConnectionManager:

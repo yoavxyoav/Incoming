@@ -100,6 +100,7 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                             if not store.is_ended_cat(raw.cat):
                                 store.set_alert(event, is_ended=True)
                                 store.clear(cat=raw.cat)
+                                store.resolve_areas(event.cat, event.areas, event.received_at)
                                 payload = {
                                     **event.model_dump(mode="json"),
                                     "clear_after_ms": settings.all_clear_display_seconds * 1000,

@@ -154,11 +154,45 @@ async def sim_all_clear(request: Request, cat: str = "1") -> dict[str, object]:
     event = _build_event(raw)
     store.set_alert(event, is_ended=True)
     store.clear(cat=cat)
+    store.resolve_areas(event.cat, event.areas, event.received_at)
     payload = {**event.model_dump(mode="json"), "clear_after_ms": settings.all_clear_display_seconds * 1000}
     await manager.broadcast({"type": "ended", "payload": payload})
     await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
     log.info("Simulated all-clear injected cat=%s", cat)
     return {"status": "ok", "cat": cat}
+
+
+@app.post("/api/sim/partial-clear")
+async def sim_partial_clear(request: Request, cat: str = "1", n: int = 2) -> dict[str, object]:
+    """Inject a simulated partial all-clear (first n areas only) — card stays red, chips split."""
+    _require_localhost(request)
+    active = store.get_active_by_cat(cat)
+    all_areas = active.areas if active else _SIM_AREAS
+    areas = all_areas[:n]
+    raw = OrefAlertRaw(
+        id=f"sim_partial_{cat}_{int(time.time())}",
+        cat=cat,
+        title="ניתן לצאת מהמרחב המוגן",
+        desc="האירוע הסתיים באזורכם",
+        data=areas,
+    )
+    event = _build_event(raw)
+    # Only resolve these areas — do NOT clear the active alert from store
+    store.resolve_areas(event.cat, event.areas, event.received_at)
+    payload = {**event.model_dump(mode="json"), "clear_after_ms": settings.all_clear_display_seconds * 1000}
+    await manager.broadcast({"type": "ended", "payload": payload})
+    await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
+    log.info("Simulated partial all-clear injected cat=%s areas=%d", cat, len(areas))
+    return {"status": "ok", "cat": cat, "cleared_areas": areas}
+
+
+@app.post("/api/history/clear")
+async def clear_history(request: Request) -> dict[str, object]:
+    """Clear the alert history groups (localhost only)."""
+    _require_localhost(request)
+    store.clear_groups()
+    await manager.broadcast({"type": "groups", "payload": []})
+    return {"status": "ok"}
 
 
 @app.websocket("/ws")

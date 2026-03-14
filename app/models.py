@@ -53,6 +53,7 @@ class AlertGroup(BaseModel):
     areas: list[str]
     categorized_areas: dict[str, list[str]]
     is_ended: bool = False
+    resolved_areas: list[str] = []  # cities that received all-clear after this group started
 
 
 class StatusResponse(BaseModel):
