@@ -1004,8 +1004,8 @@
       const resolved = new Set(group.resolved_areas || []);
       const total    = group.areas.length;
       const resolvedCount = resolved.size;
-      const allResolved   = total > 0 && resolvedCount === total;
-      const partResolved  = resolvedCount > 0 && resolvedCount < total;
+      const allResolved   = group.is_ended || (total > 0 && resolvedCount === total);
+      const partResolved  = !allResolved && resolvedCount > 0 && resolvedCount < total;
 
       const barColor = allResolved  ? 'bg-emerald-600'
                      : partResolved ? 'bg-orange-500'
