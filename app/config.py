@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     # Polling
     poll_interval: float = 1.0
+    clear_grace_polls: int = 3
 
     # History / grouping
     max_history: int = 50

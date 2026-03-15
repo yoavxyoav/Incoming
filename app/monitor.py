@@ -85,14 +85,18 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
     """Main async polling loop. Runs forever."""
     log.info("Starting Oref polling (region=%s, interval=%.1fs)", settings.region, settings.poll_interval)
 
+    quiet_streak: int = 0
+
     async with httpx.AsyncClient() as client:
         while True:
             try:
                 raw = await _fetch_alert(client)
 
                 if raw is None or _is_test(raw):
-                    if store.clear():
-                        await manager.broadcast({"type": "clear", "payload": None})
+                    quiet_streak += 1
+                    if quiet_streak >= settings.clear_grace_polls:
+                        if store.clear():
+                            await manager.broadcast({"type": "clear", "payload": None})
                 elif _filter_region(raw):
                     if store.is_new(raw.id):
                         event = _build_event(raw)
@@ -109,6 +113,7 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                                 await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
                             # else: duplicate all-clear already handled — skip silently
                         else:
+                            quiet_streak = 0
                             store.set_alert(event)
                             payload = event.model_dump(mode="json")
                             await manager.broadcast({"type": "alert", "payload": payload})
