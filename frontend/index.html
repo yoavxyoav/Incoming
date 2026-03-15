@@ -831,8 +831,7 @@
       const filters = getFilters();
       const hasMatch = Object.values(activeAlerts).some(a => {
         if (a._is_ended) return false;
-        return !soundFollowsFilter || !filters.length ||
-          a.areas.some(area => matchesAnyFilter(area.toLowerCase(), filters));
+        return !soundFollowsFilter || alertMatchesFilters(a, filters);
       });
       if (hasMatch && activeNodes.length === 0 && !activeNodes._beepInterval) startAlertSound();
       else if (!hasMatch) stopAlert();
@@ -840,6 +839,20 @@
 
     function matchesAnyFilter(text, filters) {
       return filters.some(f => text.includes(f));
+    }
+
+    // Check if an alert matches filters using both city names and area/region names
+    function alertMatchesFilters(alert, filters) {
+      if (!filters.length) return true;
+      // Check raw city names
+      if (alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters))) return true;
+      // Check area/region names from categorized_areas
+      if (alert.categorized_areas) {
+        for (const area of Object.keys(alert.categorized_areas)) {
+          if (matchesAnyFilter(area.toLowerCase(), filters)) return true;
+        }
+      }
+      return false;
     }
 
     const filterBypassed = new Set(); // cats whose card is showing all locations regardless of filter
@@ -977,13 +990,11 @@
       if (isNewActivation) {
         if (soundEnabled) {
           const filters = getFilters();
-          const alertMatches = !soundFollowsFilter || !filters.length ||
-            alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
+          const alertMatches = !soundFollowsFilter || alertMatchesFilters(alert, filters);
           if (alertMatches) startAlertSound();
         }
         const filters = getFilters();
-        const matchesDisplay = !filters.length ||
-          alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
+        const matchesDisplay = alertMatchesFilters(alert, filters);
         if (matchesDisplay) desktopNotify(alert);
       }
     }
@@ -1192,8 +1203,7 @@
           // Play chime only if sound is on and the alert matches the filter (same rule as incoming alerts)
           if (soundEnabled) {
             const filters = getFilters();
-            const matches = !soundFollowsFilter || !filters.length ||
-              p.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
+            const matches = !soundFollowsFilter || alertMatchesFilters(p, filters);
             if (matches) playAllClearSound();
           }
           // Only start dismiss timer when all original areas are cleared
