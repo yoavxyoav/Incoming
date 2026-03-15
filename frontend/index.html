@@ -641,7 +641,7 @@
       setCfg('sound_enabled', soundEnabled);
       updateSoundUI();
       if (soundEnabled) {
-        if (Object.keys(activeAlerts).length > 0) await startAlertSound();
+        reevaluateSoundForActiveAlerts();
       } else {
         stopAlert();
       }
@@ -966,7 +966,9 @@
     function showAlert(alert) {
       // Only trigger sound/notification on genuine new activation — not on repeated polls
       // of an already-active alert (Oref sends same alert with new IDs each poll).
-      const isNewActivation = !activeAlerts[alert.cat] || activeAlerts[alert.cat]._is_ended;
+      const prev = activeAlerts[alert.cat];
+      const isNewActivation = !prev || prev._is_ended;
+      const prevAreas = new Set(prev ? (prev.areas || []) : []);
       activeAlerts[alert.cat] = alert;
       // Cancel any previous timer for this cat (e.g. alert refreshed with new id)
       clearTimeout(alertAutoDismissTimers[alert.cat]);
@@ -985,6 +987,14 @@
         const matchesDisplay = !filters.length ||
           alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
         if (matchesDisplay) desktopNotify(alert);
+      } else if (soundEnabled) {
+        // Oref sometimes extends an ongoing alert to new areas — fire sound if a newly added
+        // area matches the current filter (even though this is not a "new activation").
+        const filters = getFilters();
+        const hasNewMatch = soundFollowsFilter && filters.length
+          ? alert.areas.some(a => !prevAreas.has(a) && matchesAnyFilter(a.toLowerCase(), filters))
+          : false;
+        if (hasNewMatch) startAlertSound();
       }
     }
 
@@ -1006,9 +1016,12 @@
       const resolvedCount = resolved.size;
       const allResolved   = group.is_ended || (total > 0 && resolvedCount === total);
       const partResolved  = !allResolved && resolvedCount > 0 && resolvedCount < total;
+      const staleMs   = 45 * 60 * 1000;
+      const isStale   = !group.is_ended && (Date.now() - new Date(group.to_time).getTime()) > staleMs;
 
       const barColor = allResolved  ? 'bg-emerald-600'
                      : partResolved ? 'bg-orange-500'
+                     : isStale      ? 'bg-slate-600'
                      :                'bg-red-600';
 
       const displayTitle = isAllClearTitle(group.title) ? group.cat_label : group.title;
@@ -1160,8 +1173,17 @@
           const { current, groups } = msg.payload;
           renderGroups(groups || []);
           activeAlerts = {};
-          for (const a of (current || [])) activeAlerts[a.cat] = a;
+          for (const a of (current || [])) {
+            activeAlerts[a.cat] = a;
+            const remaining = ALERT_MAX_MS - (Date.now() - new Date(a.received_at).getTime());
+            if (remaining <= 0) {
+              showClear(a.cat);
+            } else {
+              setTimeout(() => { if (activeAlerts[a.cat] && !activeAlerts[a.cat]._is_ended) showClear(a.cat); }, remaining);
+            }
+          }
           renderActivePanel();
+          reevaluateSoundForActiveAlerts();
         } else if (msg.type === 'alert') {
           showAlert(msg.payload);
         } else if (msg.type === 'ended') {
