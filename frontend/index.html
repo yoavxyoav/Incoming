@@ -1173,8 +1173,18 @@
           const { current, groups } = msg.payload;
           renderGroups(groups || []);
           activeAlerts = {};
+          const groupsByCat = {};
+          for (const g of (groups || [])) groupsByCat[g.cat] = g;
           for (const a of (current || [])) {
             activeAlerts[a.cat] = a;
+            const g = groupsByCat[a.cat];
+            if (g) {
+              a._resolved_areas = g.resolved_areas || [];
+              a._is_ended = g.resolved_areas && g.areas && g.resolved_areas.length === g.areas.length && g.areas.length > 0;
+            } else {
+              a._resolved_areas = [];
+              a._is_ended = false;
+            }
             const remaining = ALERT_MAX_MS - (Date.now() - new Date(a.received_at).getTime());
             if (remaining <= 0) {
               showClear(a.cat);
