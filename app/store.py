@@ -48,7 +48,7 @@ class AlertStore:
         self._seen_ids.add(alert.id)
         if not is_ended:
             self._active[alert.cat] = alert
-            self._ended_cats.discard(alert.cat)  # new alert resets ended state
+            self._ended_cats.clear()  # any new attack resets all-clear dedup state
         else:
             self._ended_cats.add(alert.cat)
         self._history.appendleft(alert)
@@ -142,6 +142,34 @@ class AlertStore:
     @property
     def history(self) -> list[AlertEvent]:
         return list(self._history)
+
+    def get_active_cats(self) -> list[str]:
+        """Return list of currently active category keys."""
+        return list(self._active.keys())
+
+    def end_all_active_groups(self, at: datetime) -> bool:
+        """Mark all non-ended groups as ended (used when Oref goes quiet)."""
+        changed = False
+        for i, g in enumerate(self._groups):
+            if not g.is_ended:
+                self._groups[i] = g.model_copy(update={"is_ended": True, "to_time": at})
+                changed = True
+        if changed:
+            log.info("Marked all non-ended groups as ended at=%s", at.isoformat())
+        return changed
+
+    def end_group_for_cat(self, cat: str, at: datetime) -> None:
+        """Mark the most recent non-ended group for a specific cat as ended."""
+        for i, g in enumerate(self._groups):
+            if g.cat == cat and not g.is_ended:
+                self._groups[i] = g.model_copy(update={"is_ended": True, "to_time": at})
+                log.info("Marked group ended for cat=%s at=%s", cat, at.isoformat())
+                return
+
+    def mark_ended(self, event_id: str, cat: str) -> None:
+        """Record an all-clear event as seen and mark the cat as ended (dedup guard)."""
+        self._seen_ids.add(event_id)
+        self._ended_cats.add(cat)
 
     def resolve_areas(self, cat: str, areas: list[str], at: datetime) -> None:
         """Mark cities as resolved for a specific category (timestamp only moves forward)."""

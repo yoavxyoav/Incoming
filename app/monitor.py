@@ -95,22 +95,47 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                 if raw is None or _is_test(raw):
                     quiet_streak += 1
                     if quiet_streak >= settings.clear_grace_polls:
-                        if store.clear():
-                            await manager.broadcast({"type": "clear", "payload": None})
+                        active_snapshot = store.current  # snapshot before clearing
+                        if active_snapshot:
+                            now = datetime.now(timezone.utc)
+                            store.clear()
+                            store.end_all_active_groups(now)
+                            groups_payload = [g.model_dump(mode="json") for g in store.groups]
+                            for ev in active_snapshot:
+                                ended_payload = {
+                                    **ev.model_dump(mode="json"),
+                                    "clear_after_ms": settings.all_clear_display_seconds * 1000,
+                                }
+                                await manager.broadcast({"type": "ended", "payload": ended_payload})
+                            await manager.broadcast({"type": "groups", "payload": groups_payload})
                 elif _filter_region(raw):
                     if store.is_new(raw.id):
                         event = _build_event(raw)
                         if _is_all_clear(raw):
                             if not store.is_ended_cat(raw.cat):
-                                store.set_alert(event, is_ended=True)
-                                store.clear(cat=raw.cat)
-                                store.resolve_areas(event.cat, event.areas, event.received_at)
-                                payload = {
-                                    **event.model_dump(mode="json"),
-                                    "clear_after_ms": settings.all_clear_display_seconds * 1000,
-                                }
-                                await manager.broadcast({"type": "ended", "payload": payload})
-                                await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
+                                active_snapshot = list(store._active.values())  # snapshot before any changes
+                                active_cats = store.get_active_cats()
+                                # Resolve only the areas Oref actually cleared, across all active cats
+                                for active_cat in active_cats:
+                                    store.resolve_areas(active_cat, event.areas, event.received_at)
+                                store.mark_ended(event.id, raw.cat)
+                                # Per-cat: if all areas resolved → end group + remove from active
+                                groups_by_cat = {g.cat: g for g in store.groups}
+                                for active_cat in active_cats:
+                                    g = groups_by_cat.get(active_cat)
+                                    if g and g.areas and all(a in set(g.resolved_areas) for a in g.areas):
+                                        store.end_group_for_cat(active_cat, event.received_at)
+                                        store.clear(cat=active_cat)
+                                groups_payload = [g.model_dump(mode="json") for g in store.groups]
+                                # Send ended per active cat with ONLY the areas Oref confirmed cleared
+                                for ev in active_snapshot:
+                                    payload = {
+                                        **ev.model_dump(mode="json"),
+                                        "areas": event.areas,  # actual cleared areas, not all alert areas
+                                        "clear_after_ms": settings.all_clear_display_seconds * 1000,
+                                    }
+                                    await manager.broadcast({"type": "ended", "payload": payload})
+                                await manager.broadcast({"type": "groups", "payload": groups_payload})
                             # else: duplicate all-clear already handled — skip silently
                         else:
                             quiet_streak = 0

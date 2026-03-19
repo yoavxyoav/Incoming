@@ -11,6 +11,12 @@ def _make_store(has_active: bool = True) -> MagicMock:
     store = MagicMock()
     store.clear.return_value = has_active
     store.is_new.return_value = False
+    if has_active:
+        mock_event = MagicMock()
+        mock_event.model_dump.return_value = {"cat": "1", "areas": ["Tel Aviv"]}
+        store.current = [mock_event]
+    else:
+        store.current = []
     return store
 
 
@@ -61,11 +67,13 @@ async def test_no_clear_before_grace_period() -> None:
 
 @pytest.mark.asyncio
 async def test_clear_fires_after_grace_period() -> None:
-    """3 empty polls with grace=3 must trigger store.clear() and broadcast clear."""
+    """3 empty polls with grace=3 must trigger store.clear() and broadcast ended per cat + groups."""
     store, manager = await _run_n_empty_polls(n_empty=3, grace=3)
     store.clear.assert_called()
-    clear_broadcasts = [
-        call for call in manager.broadcast.call_args_list
-        if (call.args[0] if call.args else {}).get("type") == "clear"
+    store.end_all_active_groups.assert_called_once()
+    broadcast_types = [
+        (call.args[0] if call.args else {}).get("type")
+        for call in manager.broadcast.call_args_list
     ]
-    assert len(clear_broadcasts) >= 1, "Expected at least one 'clear' WS broadcast after grace period"
+    assert "ended" in broadcast_types, "Expected 'ended' WS broadcast per active cat after grace period"
+    assert "groups" in broadcast_types, "Expected 'groups' WS broadcast after grace period"

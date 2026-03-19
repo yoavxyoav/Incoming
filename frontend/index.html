@@ -69,15 +69,29 @@
         />
       </div>
       <!-- Sound toggle -->
-      <button
-        id="sound-btn"
-        onclick="toggleSound()"
-        title="Toggle sound"
-        class="flex items-center gap-1.5 text-sm border border-emerald-700 hover:border-emerald-500 rounded-lg px-3 py-1.5 transition-colors"
-      >
-        <span id="sound-icon" class="text-base">🔊</span>
-        <span id="sound-label" class="text-emerald-400 text-xs">Sound on</span>
-      </button>
+      <div class="flex items-center gap-1">
+        <button
+          id="sound-btn"
+          onclick="toggleSound()"
+          title="Toggle sound"
+          class="flex items-center gap-1.5 text-sm border border-emerald-700 hover:border-emerald-500 rounded-lg px-3 py-1.5 transition-colors"
+        >
+          <span id="sound-icon" class="text-base">🔊</span>
+          <span id="sound-label" class="text-emerald-400 text-xs">Sound on</span>
+        </button>
+        <div class="relative">
+          <button data-help onclick="toggleHelp('sound-help-pop')"
+            class="w-4 h-4 rounded-full border border-slate-700 text-slate-600 hover:text-slate-400 hover:border-slate-500 text-xs flex items-center justify-center transition-colors leading-none">?</button>
+          <div id="sound-help-pop" class="hidden absolute right-0 top-6 w-72 bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 shadow-xl z-20 space-y-2">
+            <div class="font-semibold text-slate-200">Sound behavior</div>
+            <div>Siren plays when a <span class="text-white">new</span> alert arrives. It does <span class="text-white">not</span> replay for ongoing polls of the same alert.</div>
+            <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">Sound follows filter</div>
+            <div>When enabled (default), sound only fires if the alert contains a city matching your active filter chips. Typing in the filter box does <span class="text-white">not</span> stop a live siren — only confirming a filter (Enter) does.</div>
+            <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">Auto-dismiss</div>
+            <div>Active alert cards auto-dismiss after 20 minutes. On page reload, the elapsed time is subtracted — a 19-minute-old alert gets 1 minute, not 20.</div>
+          </div>
+        </div>
+      </div>
       <!-- Stay awake toggle -->
       <button
         id="wakelock-btn"
@@ -136,7 +150,24 @@
     <!-- History -->
     <div>
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Alert History</h3>
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Alert History</h3>
+          <div class="relative">
+            <button data-help onclick="toggleHelp('history-help-pop')"
+              class="w-4 h-4 rounded-full border border-slate-700 text-slate-600 hover:text-slate-400 hover:border-slate-500 text-xs flex items-center justify-center transition-colors leading-none">?</button>
+            <div id="history-help-pop" class="hidden absolute left-0 top-6 w-80 bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 shadow-xl z-20 space-y-2">
+              <div class="font-semibold text-slate-200">History bar colors</div>
+              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-emerald-600 shrink-0 mt-0.5"></span><span>Green — attack ended (explicit Oref all-clear, or Oref went quiet)</span></div>
+              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-orange-500 shrink-0 mt-0.5"></span><span>Orange — partial clear (some cities confirmed safe, others still pending)</span></div>
+              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-red-600 shrink-0 mt-0.5"></span><span>Red — recent alert, no confirmation yet</span></div>
+              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-slate-600 shrink-0 mt-0.5"></span><span>Gray — old alert (&gt;45 min) without resolution data</span></div>
+              <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">Expanded row chip colors</div>
+              <div class="flex items-start gap-2"><span class="bg-emerald-900/50 text-emerald-200 px-1.5 rounded shrink-0">city</span><span>All-clear received for this city</span></div>
+              <div class="flex items-start gap-2"><span class="bg-red-900/40 text-red-300 px-1.5 rounded shrink-0">city</span><span>No all-clear received</span></div>
+              <div class="border-t border-slate-700 pt-2 text-slate-400">Note: Oref rarely sends explicit all-clears. Most attacks end when Oref simply goes quiet — the app detects this after 3 consecutive empty polls.</div>
+            </div>
+          </div>
+        </div>
         <button onclick="clearHistory()" class="text-xs text-slate-600 hover:text-slate-400 transition-colors">clear</button>
       </div>
       <div id="history-list" class="space-y-2">
@@ -361,6 +392,29 @@
     const alertPanel  = document.getElementById('alert-panel');
     const allClear    = document.getElementById('all-clear');
     const filterInput = document.getElementById('location-filter');
+    // ── Frontend logger ───────────────────────────────────────────────────────
+    // Logs to console with timestamp + category tag.
+    // Rolling buffer kept in window._flog (last 500 entries) — copy from devtools:
+    //   copy(window._flog.map(e => `${e.ts} [${e.cat}] ${e.msg}`).join('\n'))
+    const _flogBuf = [];
+    window._flog = _flogBuf;
+    const _flogColors = {
+      ws: '#60a5fa', state: '#a78bfa', alert: '#f87171', ended: '#34d399',
+      sound: '#fbbf24', filter: '#94a3b8', dismiss: '#fb923c', groups: '#64748b',
+    };
+    function flog(cat, msg, data) {
+      const ts = new Date().toLocaleTimeString('he-IL', { hour12: false, fractionalSecondDigits: 3 });
+      const entry = { ts, cat, msg, ...(data !== undefined && { data }) };
+      _flogBuf.push(entry);
+      if (_flogBuf.length > 500) _flogBuf.shift();
+      const color = _flogColors[cat] || '#cbd5e1';
+      const label = `%c[${cat}]%c`;
+      const style = [`color:${color};font-weight:bold`, 'color:inherit'];
+      data !== undefined
+        ? console.log(`${ts} ${label} ${msg}`, ...style, data)
+        : console.log(`${ts} ${label} ${msg}`, ...style);
+    }
+
     const historyEl   = document.getElementById('history-list');
     const statTotal   = document.getElementById('stat-total');
     const statLast    = document.getElementById('stat-last');
@@ -392,10 +446,12 @@
     }
 
     function stopAlert() {
+      const wasPlaying = activeNodes.length > 0 || !!activeNodes._beepInterval;
       if (activeNodes._beepInterval) clearInterval(activeNodes._beepInterval);
       activeNodes.forEach(n => { try { n.stop(); } catch {} });
       activeNodes = [];
       if (soundStopTimeout) { clearTimeout(soundStopTimeout); soundStopTimeout = null; }
+      if (wasPlaying) flog('sound', 'stopAlert — siren stopped');
       // Reset test button if it was active
       if (testTimeout) {
         clearTimeout(testTimeout);
@@ -506,8 +562,15 @@
     }
 
     async function startAlertSound() {
-      if (activeNodes.length > 0 || activeNodes._beepInterval) return; // already playing
-      if (!soundEnabled) return;
+      if (activeNodes.length > 0 || activeNodes._beepInterval) {
+        flog('sound', 'startAlertSound — skipped, already playing');
+        return;
+      }
+      if (!soundEnabled) {
+        flog('sound', 'startAlertSound — skipped, sound disabled');
+        return;
+      }
+      flog('sound', `startAlertSound — playing type=${soundType}`);
       if (soundType === 'siren') await playSiren();
       else if (soundType === 'beep') await playRepeatingBeep();
       else if (soundType === 'alarm') await playAlarm();
@@ -788,7 +851,8 @@
         chip.innerHTML = `${f} <button class="text-slate-400 hover:text-white leading-none" data-i="${i}">✕</button>`;
         chip.querySelector('button').addEventListener('click', () => {
           activeFilters.splice(i, 1);
-          saveFilters(); filterBypassed.clear(); renderFilterChips(); renderActivePanel(); reevaluateSoundForActiveAlerts();
+          flog('filter', `chip removed → filters=${JSON.stringify(activeFilters)}`);
+          saveFilters(); filterBypassed.clear(); renderFilterChips(); renderActivePanel(); renderGroups(lastGroups); reevaluateSoundForActiveAlerts();
         });
         filterChipsEl.appendChild(chip);
       });
@@ -797,7 +861,9 @@
       clearAll.className = 'text-xs text-slate-500 hover:text-slate-300 px-1';
       clearAll.textContent = 'clear all';
       clearAll.addEventListener('click', () => {
-        activeFilters = []; saveFilters(); filterBypassed.clear(); renderFilterChips(); renderActivePanel(); reevaluateSoundForActiveAlerts();
+        activeFilters = [];
+        flog('filter', 'all filters cleared');
+        saveFilters(); filterBypassed.clear(); renderFilterChips(); renderActivePanel(); renderGroups(lastGroups); reevaluateSoundForActiveAlerts();
       });
       filterChipsEl.appendChild(clearAll);
     }
@@ -807,13 +873,14 @@
         const val = filterInput.value.trim();
         if (val && !activeFilters.includes(val)) {
           activeFilters.push(val);
-          saveFilters(); filterBypassed.clear(); renderFilterChips(); renderActivePanel(); reevaluateSoundForActiveAlerts();
+          flog('filter', `chip added → filters=${JSON.stringify(activeFilters)}`);
+          saveFilters(); filterBypassed.clear(); renderFilterChips(); renderActivePanel(); renderGroups(lastGroups); reevaluateSoundForActiveAlerts();
         }
         filterInput.value = '';
         e.preventDefault();
       }
     });
-    filterInput.addEventListener('input', () => { filterBypassed.clear(); renderActivePanel(); reevaluateSoundForActiveAlerts(); });
+    filterInput.addEventListener('input', () => { filterBypassed.clear(); renderActivePanel(); });
 
     function getFilters() {
       const chipFilters = activeFilters.map(f => f.toLowerCase());
@@ -827,19 +894,33 @@
     // Re-check sound for currently active alerts after filter changes.
     // Needed because isNewActivation prevents re-triggering on ongoing Oref polls.
     function reevaluateSoundForActiveAlerts() {
-      if (!soundEnabled) return;
+      if (!soundEnabled) { flog('sound', 'reevaluate — skipped, sound disabled'); return; }
       const filters = getFilters();
-      const hasMatch = Object.values(activeAlerts).some(a => {
-        if (a._is_ended) return false;
-        return !soundFollowsFilter || !filters.length ||
-          a.areas.some(area => matchesAnyFilter(area.toLowerCase(), filters));
-      });
+      const activeCats = Object.entries(activeAlerts)
+        .filter(([, a]) => !a._is_ended)
+        .map(([cat, a]) => ({ cat, match: !soundFollowsFilter || alertAreaMatchesFilters(a, filters) }));
+      const hasMatch = activeCats.some(e => e.match);
+      flog('sound', `reevaluate — activeCats=${activeCats.length} hasMatch=${hasMatch} playing=${activeNodes.length > 0}`, activeCats);
       if (hasMatch && activeNodes.length === 0 && !activeNodes._beepInterval) startAlertSound();
       else if (!hasMatch) stopAlert();
     }
 
     function matchesAnyFilter(text, filters) {
       return filters.some(f => text.includes(f));
+    }
+
+    // Check whether an alert matches the active filters for sound/display purposes.
+    // Checks both raw city names AND city+region combinations so that region-based
+    // filter chips (e.g. "לכיש") trigger sound the same way they trigger display.
+    function alertAreaMatchesFilters(alert, filters) {
+      if (!filters.length) return true;
+      if (alert.areas && alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters))) return true;
+      if (alert.categorized_areas) {
+        for (const [region, cities] of Object.entries(alert.categorized_areas)) {
+          if (cities.some(c => matchesAnyFilter(c.toLowerCase() + ' ' + region.toLowerCase(), filters))) return true;
+        }
+      }
+      return false;
     }
 
     const filterBypassed = new Set(); // cats whose card is showing all locations regardless of filter
@@ -970,6 +1051,7 @@
       const isNewActivation = !prev || prev._is_ended;
       const prevAreas = new Set(prev ? (prev.areas || []) : []);
       activeAlerts[alert.cat] = alert;
+      flog('alert', `showAlert cat=${alert.cat} id=${alert.id} areas=${alert.areas.length} isNew=${isNewActivation}`);
       // Cancel any previous timer for this cat (e.g. alert refreshed with new id)
       clearTimeout(alertAutoDismissTimers[alert.cat]);
       alertAutoDismissTimers[alert.cat] = setTimeout(() => {
@@ -977,28 +1059,29 @@
       }, ALERT_MAX_MS);
       renderActivePanel();
       if (isNewActivation) {
-        if (soundEnabled) {
-          const filters = getFilters();
-          const alertMatches = !soundFollowsFilter || !filters.length ||
-            alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
-          if (alertMatches) startAlertSound();
-        }
         const filters = getFilters();
-        const matchesDisplay = !filters.length ||
-          alert.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
-        if (matchesDisplay) desktopNotify(alert);
+        const filterMatch = alertAreaMatchesFilters(alert, filters);
+        flog('sound', `newActivation cat=${alert.cat} soundEnabled=${soundEnabled} soundFollowsFilter=${soundFollowsFilter} filters=${JSON.stringify(filters)} filterMatch=${filterMatch}`);
+        if (soundEnabled) {
+          if (!soundFollowsFilter || filterMatch) startAlertSound();
+          else flog('sound', `newActivation — SUPPRESSED by filter (no area match)`);
+        }
+        if (filterMatch) desktopNotify(alert);
       } else if (soundEnabled) {
         // Oref sometimes extends an ongoing alert to new areas — fire sound if a newly added
         // area matches the current filter (even though this is not a "new activation").
         const filters = getFilters();
+        const newAreas = { areas: alert.areas.filter(a => !prevAreas.has(a)), categorized_areas: alert.categorized_areas };
         const hasNewMatch = soundFollowsFilter && filters.length
-          ? alert.areas.some(a => !prevAreas.has(a) && matchesAnyFilter(a.toLowerCase(), filters))
+          ? newAreas.areas.length > 0 && alertAreaMatchesFilters(newAreas, filters)
           : false;
+        flog('sound', `ongoing cat=${alert.cat} newAreas=${newAreas.areas.length} hasNewMatch=${hasNewMatch}`);
         if (hasNewMatch) startAlertSound();
       }
     }
 
     function showClear(cat) {
+      flog('dismiss', `showClear cat=${cat ?? 'ALL'}`);
       if (cat) delete activeAlerts[cat];
       else activeAlerts = {};
       renderActivePanel();
@@ -1026,6 +1109,22 @@
 
       const displayTitle = isAllClearTitle(group.title) ? group.cat_label : group.title;
       const preview = group.areas.slice(0, 3).join(', ') + (group.areas.length > 3 ? ` +${group.areas.length - 3}` : '');
+
+      // Compute filter-matching cities for the collapsed row preview.
+      // Use only committed chip filters (not live input split into words) to avoid
+      // partial-word false positives like "תל" matching "תלמי יפה" when typing "תל אביב".
+      const chipF = activeFilters.map(f => f.toLowerCase());
+      let matchedCities = [];
+      if (chipF.length && group.categorized_areas) {
+        for (const [region, cities] of Object.entries(group.categorized_areas)) {
+          for (const city of cities) {
+            if (matchesAnyFilter(city.toLowerCase(), chipF) || matchesAnyFilter(city.toLowerCase() + ' ' + region.toLowerCase(), chipF)) {
+              matchedCities.push(city);
+            }
+          }
+        }
+      }
+
       const from = new Date(group.from_time), to = new Date(group.to_time);
       const timeLabel = (to - from) > 1000
         ? `${fmtTime(group.from_time)} – ${fmtTime(group.to_time)}`
@@ -1038,9 +1137,11 @@
           <div class="w-1.5 h-8 rounded-full ${barColor} shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="font-medium text-sm text-white he truncate">${displayTitle}</div>
-            <div class="text-xs he truncate mt-0.5 flex items-center gap-2">
+            <div class="text-xs he mt-0.5 flex items-center gap-1.5 flex-wrap">
               ${allResolved ? '<span class="text-emerald-400 shrink-0">✓ הסתיים</span>' : ''}
-              <span class="text-slate-500">${preview}</span>
+              ${matchedCities.length
+                ? matchedCities.map(c => `<span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded he">${c}</span>`).join('')
+                : `<span class="text-slate-500 truncate">${preview}</span>`}
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
@@ -1065,12 +1166,28 @@
       return el;
     }
 
+    function toggleHelp(id) {
+      const el = document.getElementById(id);
+      const wasHidden = el.classList.contains('hidden');
+      // Close all open help popovers
+      document.querySelectorAll('[id$="-help-pop"]').forEach(h => h.classList.add('hidden'));
+      if (wasHidden) el.classList.remove('hidden');
+    }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('button[data-help]') && !e.target.closest('[id$="-help-pop"]')) {
+        document.querySelectorAll('[id$="-help-pop"]').forEach(h => h.classList.add('hidden'));
+      }
+    });
+
     async function clearHistory() {
       await fetch('/api/history/clear', { method: 'POST' });
       // UI update handled by the 'groups' broadcast from the server
     }
 
+    let lastGroups = [];
+
     function renderGroups(groups) {
+      lastGroups = groups;
       historyEl.innerHTML = '';
       if (!groups.length) {
         historyEl.innerHTML = '<p id="history-empty" class="text-slate-600 text-sm">No alerts this session.</p>';
@@ -1142,6 +1259,7 @@
       ws = new WebSocket(WS_URL);
 
       ws.onopen = () => {
+        flog('ws', 'connected');
         wsDot.className     = 'w-2 h-2 rounded-full bg-emerald-400';
         wsLabel.textContent = 'Live';
         wsLabel.className   = 'text-emerald-400 text-sm';
@@ -1149,13 +1267,14 @@
       };
 
       ws.onclose = () => {
+        flog('ws', `disconnected — reconnecting in ${Math.round(reconnectDelay)}ms`);
         wsDot.className     = 'w-2 h-2 rounded-full bg-red-500 pulse-dot';
         wsLabel.textContent = 'Reconnecting…';
         wsLabel.className   = 'text-red-400 text-sm';
         setTimeout(connect, Math.min(reconnectDelay *= 1.5, 15000));
       };
 
-      ws.onerror = () => ws.close();
+      ws.onerror = (e) => { flog('ws', 'error', e); ws.close(); };
 
       ws.onmessage = (ev) => {
         const msg = JSON.parse(ev.data);
@@ -1171,6 +1290,7 @@
 
         if (msg.type === 'state') {
           const { current, groups } = msg.payload;
+          flog('state', `state received — active=${(current||[]).length} groups=${(groups||[]).length}`);
           renderGroups(groups || []);
           activeAlerts = {};
           const groupsByCat = {};
@@ -1186,6 +1306,7 @@
               a._is_ended = false;
             }
             const remaining = ALERT_MAX_MS - (Date.now() - new Date(a.received_at).getTime());
+            flog('state', `  cat=${a.cat} areas=${a.areas.length} resolved=${a._resolved_areas.length} is_ended=${a._is_ended} remaining=${Math.round(remaining/1000)}s`);
             if (remaining <= 0) {
               showClear(a.cat);
             } else {
@@ -1199,40 +1320,52 @@
         } else if (msg.type === 'ended') {
           const p = msg.payload;
           const prev = activeAlerts[p.cat] || {};
-          // No prior active alert context — nothing to split or dismiss
-          if (!prev.areas) return;
-          // Accumulate resolved areas across multiple partial all-clears
-          const prevResolved = new Set(prev._resolved_areas || []);
-          p.areas.forEach(a => prevResolved.add(a));
-          const resolvedAreas = [...prevResolved];
-          // Compare against original areas to determine if fully cleared
-          const originalAreas = prev.areas || p.areas;
-          const allCleared = originalAreas.length > 0 && originalAreas.every(a => prevResolved.has(a));
-          activeAlerts[p.cat] = {
-            ...prev,
-            ...p,
-            // Preserve original card data so partial card keeps full context
-            areas: originalAreas,
-            categorized_areas: prev.categorized_areas || p.categorized_areas,
-            title: prev.title || p.title,
-            desc: prev.desc || p.desc,
-            cat_label: prev.cat_label || p.cat_label,
-            _resolved_areas: resolvedAreas,
-            _is_ended: allCleared,
-          };
-          renderActivePanel();
-          // Play chime only if sound is on and the alert matches the filter (same rule as incoming alerts)
-          if (soundEnabled) {
-            const filters = getFilters();
-            const matches = !soundFollowsFilter || !filters.length ||
-              p.areas.some(a => matchesAnyFilter(a.toLowerCase(), filters));
-            if (matches) playAllClearSound();
-          }
-          // Only start dismiss timer when all original areas are cleared
-          if (allCleared) {
-            setTimeout(() => showClear(p.cat), p.clear_after_ms ?? 300_000);
+          flog('ended', `ended received cat=${p.cat} areas=${p.areas?.length} prevHasAreas=${!!prev.areas}`);
+          if (prev.areas) {
+            // Accumulate resolved areas across multiple partial all-clears
+            const prevResolved = new Set(prev._resolved_areas || []);
+            p.areas.forEach(a => prevResolved.add(a));
+            const resolvedAreas = [...prevResolved];
+            // Compare against original areas to determine if fully cleared
+            const originalAreas = prev.areas;
+            const allCleared = originalAreas.length > 0 && originalAreas.every(a => prevResolved.has(a));
+            flog('ended', `  originalAreas=${originalAreas.length} resolved=${resolvedAreas.length} allCleared=${allCleared}`);
+            activeAlerts[p.cat] = {
+              ...prev,
+              ...p,
+              // Preserve original card data so partial card keeps full context
+              areas: originalAreas,
+              categorized_areas: prev.categorized_areas || p.categorized_areas,
+              title: prev.title || p.title,
+              desc: prev.desc || p.desc,
+              cat_label: prev.cat_label || p.cat_label,
+              _resolved_areas: resolvedAreas,
+              _is_ended: allCleared,
+            };
+            renderActivePanel();
+            if (allCleared) {
+              stopAlert(); // stop siren immediately — don't wait for 15-second auto-timeout
+            }
+            // Play chime only if sound is on and the alert matches the filter (same rule as incoming alerts)
+            if (soundEnabled) {
+              const filters = getFilters();
+              const matches = !soundFollowsFilter || alertAreaMatchesFilters(activeAlerts[p.cat] || p, filters);
+              flog('sound', `all-clear chime cat=${p.cat} matches=${matches}`);
+              if (matches) playAllClearSound();
+            }
+            // Only start dismiss timer when all original areas are cleared
+            if (allCleared) {
+              const afterMs = p.clear_after_ms ?? 300_000;
+              flog('dismiss', `dismiss timer set cat=${p.cat} after=${afterMs/1000}s`);
+              setTimeout(() => showClear(p.cat), afterMs);
+            }
+          } else {
+            // No prior card context — backend already updated groups, fetch to sync history
+            flog('ended', `  no prior card for cat=${p.cat} — fetching history`);
+            fetch('/api/history').then(r => r.json()).then(data => renderGroups(data.groups)).catch(() => {});
           }
         } else if (msg.type === 'groups') {
+          flog('groups', `groups update — ${msg.payload?.length} groups`);
           renderGroups(msg.payload);
         }
         // 'clear' (API went quiet) is intentionally ignored —
