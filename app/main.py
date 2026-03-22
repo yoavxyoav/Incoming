@@ -2,7 +2,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -13,8 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from app import geo
 from app.config import settings
 from app.logger import log
+from pydantic import BaseModel
 from app.models import OrefAlertRaw, StatusResponse
-from app.monitor import OREF_HEADERS, OREF_URL, _build_event, poll_loop
+from app.monitor import OREF_HEADERS, OREF_URL, _build_event, poll_loop, reset_quiet_streak
 from app.store import manager, store
 
 
@@ -65,10 +66,22 @@ async def public_config() -> dict[str, object]:
     return {
         "region": settings.region,
         "include_test_alerts": settings.include_test_alerts,
-        "group_window_seconds": settings.group_window_seconds,
         "all_clear_display_seconds": settings.all_clear_display_seconds,
         "max_groups": settings.max_groups,
+        "auto_clear_minutes": settings.auto_clear_minutes,
     }
+
+
+class _ConfigPatch(BaseModel):
+    auto_clear_minutes: Optional[int] = None
+
+
+@app.patch("/api/config")
+async def patch_config(patch: _ConfigPatch) -> dict[str, object]:
+    """Update runtime-configurable settings. Changes are in-memory only (reset on restart)."""
+    if patch.auto_clear_minutes is not None:
+        settings.auto_clear_minutes = max(1, min(120, patch.auto_clear_minutes))
+    return {"auto_clear_minutes": settings.auto_clear_minutes}
 
 
 @app.get("/api/history")
@@ -132,6 +145,7 @@ async def sim_alert(request: Request, cat: str = "1") -> dict[str, object]:
     )
     event = _build_event(raw)
     store.set_alert(event)
+    reset_quiet_streak()
     await manager.broadcast({"type": "alert", "payload": event.model_dump(mode="json")})
     await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})
     log.info("Simulated alert injected cat=%s", cat)
@@ -152,9 +166,9 @@ async def sim_all_clear(request: Request, cat: str = "1") -> dict[str, object]:
         data=areas,
     )
     event = _build_event(raw)
-    store.set_alert(event, is_ended=True)
-    store.clear(cat=cat)
     store.resolve_areas(event.cat, event.areas, event.received_at)
+    store.end_group_for_cat(cat, event.received_at, explicitly=True)
+    store.clear(cat=cat)
     payload = {**event.model_dump(mode="json"), "clear_after_ms": settings.all_clear_display_seconds * 1000}
     await manager.broadcast({"type": "ended", "payload": payload})
     await manager.broadcast({"type": "groups", "payload": [g.model_dump(mode="json") for g in store.groups]})

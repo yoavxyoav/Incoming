@@ -89,6 +89,8 @@
             <div>When enabled (default), sound only fires if the alert contains a city matching your active filter chips. Typing in the filter box does <span class="text-white">not</span> stop a live siren — only confirming a filter (Enter) does.</div>
             <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">Auto-dismiss</div>
             <div>Active alert cards auto-dismiss after 20 minutes. On page reload, the elapsed time is subtracted — a 19-minute-old alert gets 1 minute, not 20.</div>
+            <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">Auto-clear after silence</div>
+            <div>If Oref stops broadcasting an alert without sending an explicit all-clear, the alert is auto-ended after a configurable silence period (default 10 minutes). Adjustable in settings.</div>
           </div>
         </div>
       </div>
@@ -156,15 +158,14 @@
             <button data-help onclick="toggleHelp('history-help-pop')"
               class="w-4 h-4 rounded-full border border-slate-700 text-slate-600 hover:text-slate-400 hover:border-slate-500 text-xs flex items-center justify-center transition-colors leading-none">?</button>
             <div id="history-help-pop" class="hidden absolute left-0 top-6 w-80 bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 shadow-xl z-20 space-y-2">
-              <div class="font-semibold text-slate-200">History bar colors</div>
-              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-emerald-600 shrink-0 mt-0.5"></span><span>Green — attack ended (explicit Oref all-clear, or Oref went quiet)</span></div>
-              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-orange-500 shrink-0 mt-0.5"></span><span>Orange — partial clear (some cities confirmed safe, others still pending)</span></div>
-              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-red-600 shrink-0 mt-0.5"></span><span>Red — recent alert, no confirmation yet</span></div>
-              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-slate-600 shrink-0 mt-0.5"></span><span>Gray — old alert (&gt;45 min) without resolution data</span></div>
+              <div class="font-semibold text-slate-200">Alert lifecycle</div>
+              <div class="flex items-start gap-2"><span class="shrink-0 mt-0.5 font-semibold text-slate-200">Active pane</span><span>Alerts currently ongoing — stay here until resolved</span></div>
+              <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">History bar colors</div>
+              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-emerald-600 shrink-0 mt-0.5"></span><span>Green (הסתיים) — Oref sent an explicit all-clear; confirmed safe</span></div>
+              <div class="flex items-start gap-2"><span class="w-1.5 h-3.5 rounded-full bg-amber-500 shrink-0 mt-0.5"></span><span>Yellow (פג תוקף) — alert auto-cleared after 10 minutes of silence; status unknown</span></div>
               <div class="border-t border-slate-700 pt-2 font-semibold text-slate-200">Expanded row chip colors</div>
               <div class="flex items-start gap-2"><span class="bg-emerald-900/50 text-emerald-200 px-1.5 rounded shrink-0">city</span><span>All-clear received for this city</span></div>
               <div class="flex items-start gap-2"><span class="bg-red-900/40 text-red-300 px-1.5 rounded shrink-0">city</span><span>No all-clear received</span></div>
-              <div class="border-t border-slate-700 pt-2 text-slate-400">Note: Oref rarely sends explicit all-clears. Most attacks end when Oref simply goes quiet — the app detects this after 3 consecutive empty polls.</div>
             </div>
           </div>
         </div>
@@ -312,19 +313,6 @@
 
         <div class="flex items-center justify-between gap-4">
           <div>
-            <div class="text-sm text-slate-300">Group window</div>
-            <div class="text-xs text-slate-600 mt-0.5">Seconds before a new history group starts</div>
-          </div>
-          <div class="flex gap-1 items-center shrink-0">
-            <input id="cfg-group-window" type="number" min="5" max="300"
-              class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 w-20 focus:outline-none focus:border-slate-500" />
-            <span class="text-xs text-slate-600">s</span>
-            <button onclick="resetCfg('group_window_seconds')" title="Reset" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
-          </div>
-        </div>
-
-        <div class="flex items-center justify-between gap-4">
-          <div>
             <div class="text-sm text-slate-300">All-clear display</div>
             <div class="text-xs text-slate-600 mt-0.5">How long the green card stays before dismissing</div>
           </div>
@@ -333,6 +321,19 @@
               class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 w-20 focus:outline-none focus:border-slate-500" />
             <span class="text-xs text-slate-600">s</span>
             <button onclick="resetCfg('all_clear_display_seconds')" title="Reset" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-sm text-slate-300">Auto-clear after silence</div>
+            <div class="text-xs text-slate-600 mt-0.5">Minutes of API silence before an alert without an explicit all-clear is auto-ended</div>
+          </div>
+          <div class="flex gap-1 items-center shrink-0">
+            <input id="cfg-auto-clear-mins" type="number" min="1" max="120"
+              class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 w-20 focus:outline-none focus:border-slate-500" />
+            <span class="text-xs text-slate-600">min</span>
+            <button onclick="resetCfg('auto_clear_minutes')" title="Reset" class="text-slate-600 hover:text-slate-400 text-xs px-1">↺</button>
           </div>
         </div>
       </div>
@@ -356,9 +357,9 @@
     let serverConfig = {
       region: '*',
       include_test_alerts: false,
-      group_window_seconds: 60,
       all_clear_display_seconds: 300,
       max_groups: 50,
+      auto_clear_minutes: 10,
     };
 
     function getCfg(key) {
@@ -580,10 +581,10 @@
 
     // ── Settings modal ────────────────────────────────────────────────────────
     function populateSettingsForm() {
-      document.getElementById('cfg-region').value       = getCfg('region') ?? '*';
-      document.getElementById('cfg-include-test').value = String(getCfg('include_test_alerts') ?? false);
-      document.getElementById('cfg-group-window').value = getCfg('group_window_seconds') ?? 60;
-      document.getElementById('cfg-allclear').value     = getCfg('all_clear_display_seconds') ?? 300;
+      document.getElementById('cfg-region').value            = getCfg('region') ?? '*';
+      document.getElementById('cfg-include-test').value      = String(getCfg('include_test_alerts') ?? false);
+      document.getElementById('cfg-allclear').value          = getCfg('all_clear_display_seconds') ?? 300;
+      document.getElementById('cfg-auto-clear-mins').value   = getCfg('auto_clear_minutes') ?? 10;
       const vol = Math.round((getCfg('sound_volume') ?? volume) * 100);
       document.getElementById('vol-slider').value = vol;
       document.getElementById('vol-value').textContent  = vol + '%';
@@ -602,17 +603,26 @@
     }
 
     function applySettings() {
-      const region      = document.getElementById('cfg-region').value.trim() || '*';
-      const inclTest    = document.getElementById('cfg-include-test').value === 'true';
-      const groupWin    = parseInt(document.getElementById('cfg-group-window').value, 10);
-      const allClearSec = parseInt(document.getElementById('cfg-allclear').value, 10);
+      const region         = document.getElementById('cfg-region').value.trim() || '*';
+      const inclTest       = document.getElementById('cfg-include-test').value === 'true';
+      const allClearSec    = parseInt(document.getElementById('cfg-allclear').value, 10);
+      const autoClearMins  = parseInt(document.getElementById('cfg-auto-clear-mins').value, 10);
 
       setCfg('region',                   region);
       setCfg('include_test_alerts',      inclTest);
-      if (!isNaN(groupWin))    setCfg('group_window_seconds',     groupWin);
-      if (!isNaN(allClearSec)) setCfg('all_clear_display_seconds', allClearSec);
+      if (!isNaN(allClearSec))    setCfg('all_clear_display_seconds', allClearSec);
+      if (!isNaN(autoClearMins))  setCfg('auto_clear_minutes',        autoClearMins);
       setCfg('sound_type',   soundType);
       setCfg('sound_volume', volume);
+
+      // Push auto_clear_minutes to backend so the poll loop respects it immediately
+      if (!isNaN(autoClearMins)) {
+        fetch('/api/config', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_clear_minutes: autoClearMins }),
+        }).catch(() => {});
+      }
 
       // Apply filter immediately
       filterInput.value = region === '*' ? '' : region;
@@ -1102,7 +1112,7 @@
       const staleMs   = 45 * 60 * 1000;
       const isStale   = !group.is_ended && (Date.now() - new Date(group.to_time).getTime()) > staleMs;
 
-      const barColor = allResolved  ? 'bg-emerald-600'
+      const barColor = allResolved  ? (group.explicitly_ended ? 'bg-emerald-600' : 'bg-amber-500')
                      : partResolved ? 'bg-orange-500'
                      : isStale      ? 'bg-slate-600'
                      :                'bg-red-600';
@@ -1138,7 +1148,7 @@
           <div class="flex-1 min-w-0">
             <div class="font-medium text-sm text-white he truncate">${displayTitle}</div>
             <div class="text-xs he mt-0.5 flex items-center gap-1.5 flex-wrap">
-              ${allResolved ? '<span class="text-emerald-400 shrink-0">✓ הסתיים</span>' : ''}
+              ${allResolved ? (group.explicitly_ended ? '<span class="text-emerald-400 shrink-0">✓ הסתיים</span>' : '<span class="text-amber-400 shrink-0">⏱ פג תוקף</span>') : ''}
               ${matchedCities.length
                 ? matchedCities.map(c => `<span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded he">${c}</span>`).join('')
                 : `<span class="text-slate-500 truncate">${preview}</span>`}
@@ -1188,18 +1198,19 @@
 
     function renderGroups(groups) {
       lastGroups = groups;
+      const endedGroups = groups.filter(g => g.is_ended === true);
       historyEl.innerHTML = '';
-      if (!groups.length) {
+      if (!endedGroups.length) {
         historyEl.innerHTML = '<p id="history-empty" class="text-slate-600 text-sm">No alerts this session.</p>';
         statTotal.textContent = '0';
         statLast.textContent  = '—';
         return;
       }
-      groups.slice(0, 20).forEach(g => {
+      endedGroups.slice(0, 20).forEach(g => {
         historyEl.appendChild(renderGroup(g));
       });
-      statTotal.textContent = groups.length;
-      statLast.textContent  = fmtTime(groups[0].to_time);
+      statTotal.textContent = endedGroups.length;
+      statLast.textContent  = fmtTime(endedGroups[0].to_time);
     }
 
     function toggleHistoryRow(header) {
@@ -1293,8 +1304,13 @@
           flog('state', `state received — active=${(current||[]).length} groups=${(groups||[]).length}`);
           renderGroups(groups || []);
           activeAlerts = {};
+          // Groups are newest-first; only keep the first (newest) per cat.
+          // If we overwrote in order, the oldest ended group would win and incorrectly
+          // set _is_ended=true on a brand-new active alert, suppressing sound.
           const groupsByCat = {};
-          for (const g of (groups || [])) groupsByCat[g.cat] = g;
+          for (const g of (groups || [])) {
+            if (!(g.cat in groupsByCat)) groupsByCat[g.cat] = g;
+          }
           for (const a of (current || [])) {
             activeAlerts[a.cat] = a;
             const g = groupsByCat[a.cat];

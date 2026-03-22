@@ -6,7 +6,7 @@ import httpx
 
 from app import geo
 from app.config import settings
-from app.logger import log
+from app.logger import log, raw_log
 from app.models import CATEGORY_LABELS, AlertEvent, OrefAlertRaw
 from app.store import ConnectionManager, AlertStore
 
@@ -85,21 +85,34 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
     """Main async polling loop. Runs forever."""
     log.info("Starting Oref polling (region=%s, interval=%.1fs)", settings.region, settings.poll_interval)
 
+    global _quiet_streak_reset
     quiet_streak: int = 0
+    was_active: bool = False   # tracks transitions for raw log quiet markers
 
     async with httpx.AsyncClient() as client:
         while True:
             try:
+                if _quiet_streak_reset:
+                    quiet_streak = 0
+                    _quiet_streak_reset = False
+
                 raw = await _fetch_alert(client)
 
                 if raw is None or _is_test(raw):
+                    if was_active:
+                        raw_log({"type": "quiet_start"})
+                        was_active = False
                     quiet_streak += 1
-                    if quiet_streak >= settings.clear_grace_polls:
+                    poll_secs = settings.poll_interval or 1.0
+
+                    # Tier 2: dismiss the active alert card after auto_clear_minutes of silence
+                    grace_polls = max(1, round(settings.auto_clear_minutes * 60 / poll_secs))
+                    if quiet_streak >= grace_polls:
                         active_snapshot = store.current  # snapshot before clearing
                         if active_snapshot:
                             now = datetime.now(timezone.utc)
                             store.clear()
-                            store.end_all_active_groups(now)
+                            store.end_all_active_groups(now, explicitly=False)
                             groups_payload = [g.model_dump(mode="json") for g in store.groups]
                             for ev in active_snapshot:
                                 ended_payload = {
@@ -109,34 +122,58 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
                                 await manager.broadcast({"type": "ended", "payload": ended_payload})
                             await manager.broadcast({"type": "groups", "payload": groups_payload})
                 elif _filter_region(raw):
+                    raw_log({
+                        "type": "all_clear" if _is_all_clear(raw) else "alert",
+                        "id": raw.id,
+                        "cat": raw.cat,
+                        "title": raw.title,
+                        "desc": raw.desc,
+                        "areas": raw.data,
+                    })
+                    was_active = True
                     if store.is_new(raw.id):
                         event = _build_event(raw)
                         if _is_all_clear(raw):
-                            if not store.is_ended_cat(raw.cat):
-                                active_snapshot = list(store._active.values())  # snapshot before any changes
-                                active_cats = store.get_active_cats()
-                                # Resolve only the areas Oref actually cleared, across all active cats
-                                for active_cat in active_cats:
-                                    store.resolve_areas(active_cat, event.areas, event.received_at)
-                                store.mark_ended(event.id, raw.cat)
-                                # Per-cat: if all areas resolved → end group + remove from active
-                                groups_by_cat = {g.cat: g for g in store.groups}
-                                for active_cat in active_cats:
-                                    g = groups_by_cat.get(active_cat)
-                                    if g and g.areas and all(a in set(g.resolved_areas) for a in g.areas):
-                                        store.end_group_for_cat(active_cat, event.received_at)
-                                        store.clear(cat=active_cat)
-                                groups_payload = [g.model_dump(mode="json") for g in store.groups]
-                                # Send ended per active cat with ONLY the areas Oref confirmed cleared
-                                for ev in active_snapshot:
-                                    payload = {
-                                        **ev.model_dump(mode="json"),
-                                        "areas": event.areas,  # actual cleared areas, not all alert areas
-                                        "clear_after_ms": settings.all_clear_display_seconds * 1000,
-                                    }
-                                    await manager.broadcast({"type": "ended", "payload": payload})
-                                await manager.broadcast({"type": "groups", "payload": groups_payload})
-                            # else: duplicate all-clear already handled — skip silently
+                            # is_new(raw.id) already deduplicates same-event replays (Oref repeats
+                            # the same ID across polls). We intentionally process every distinct
+                            # all-clear ID so that sequential all-clears for *different* areas
+                            # (each with a unique ID) are each handled independently.
+                            active_snapshot = list(store._active.values())  # snapshot before any changes
+                            ac_areas = set(event.areas)
+
+                            # Same-cat clear
+                            store.resolve_areas(raw.cat, event.areas, event.received_at)
+                            store.mark_ended(event.id, raw.cat)
+                            store.end_group_for_cat(raw.cat, event.received_at, explicitly=True)
+                            store.clear(cat=raw.cat)
+
+                            # Cross-cat clear: cat=10 is Oref's universal all-clear signal.
+                            # 89% of cat=10 all-clears have area overlap with active cat=1/6 alerts.
+                            # End any other active group whose areas overlap with the all-clear areas.
+                            for ev in active_snapshot:
+                                if ev.cat == raw.cat:
+                                    continue
+                                if ac_areas & set(ev.areas):
+                                    store.resolve_areas(ev.cat, event.areas, event.received_at)
+                                    store.end_group_for_cat(ev.cat, event.received_at, explicitly=True)
+                                    store.clear(cat=ev.cat)
+                                    log.info("Cross-cat all-clear: ended cat=%s via cat=%s all-clear", ev.cat, raw.cat)
+
+                            groups_payload = [g.model_dump(mode="json") for g in store.groups]
+                            for ev in active_snapshot:
+                                if ev.cat != raw.cat and not (ac_areas & set(ev.areas)):
+                                    continue
+                                # For same-cat: use the original alert's areas so the frontend
+                                # knows all areas are cleared (all-clear ends the whole event).
+                                # For cross-cat: use the all-clear's areas (only those overlap).
+                                cleared_areas = ev.areas if ev.cat == raw.cat else list(event.areas)
+                                payload = {
+                                    **ev.model_dump(mode="json"),
+                                    "areas": cleared_areas,
+                                    "clear_after_ms": settings.all_clear_display_seconds * 1000,
+                                }
+                                await manager.broadcast({"type": "ended", "payload": payload})
+                            await manager.broadcast({"type": "groups", "payload": groups_payload})
                         else:
                             quiet_streak = 0
                             store.set_alert(event)
@@ -152,6 +189,15 @@ async def poll_loop(store: AlertStore, manager: ConnectionManager) -> None:
             await manager.broadcast({"type": "tick", "payload": None})
 
             await asyncio.sleep(settings.poll_interval)
+
+
+_quiet_streak_reset: bool = False
+
+
+def reset_quiet_streak() -> None:
+    """Signal the poll loop to reset quiet_streak (e.g. after a sim alert injection)."""
+    global _quiet_streak_reset
+    _quiet_streak_reset = True
 
 
 _apprise_instance: Optional[Any] = None

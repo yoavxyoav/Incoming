@@ -3,6 +3,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 class JsonFormatter(logging.Formatter):
@@ -46,3 +47,15 @@ def setup_logger(name: str = "oref", level: str = "INFO") -> logging.Logger:
 
 
 log = setup_logger()
+
+_raw_log_path = Path(__file__).parent.parent / "logs" / "oref_raw.jsonl"
+
+
+def raw_log(entry: dict[str, Any]) -> None:
+    """Append one JSONL line to the raw alert log for post-hoc analysis."""
+    entry["ts"] = datetime.now(timezone.utc).isoformat()
+    try:
+        with _raw_log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        log.warning("raw_log write failed: %s", exc)

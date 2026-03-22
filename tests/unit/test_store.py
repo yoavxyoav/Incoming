@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.models import AlertEvent
-from app.store import AlertStore, GROUP_WINDOW_SECONDS
+from app.store import AlertStore
 
 
 def make_alert(
@@ -103,12 +103,13 @@ def test_alerts_merged_within_window() -> None:
     assert "חולון" in s.groups[0].areas
 
 
-def test_alerts_split_outside_window() -> None:
+def test_same_cat_alerts_always_merge() -> None:
+    """Same-cat alerts always merge into the current non-ended group regardless of time gap."""
     s = AlertStore()
     t = datetime.now(timezone.utc)
     s.set_alert(make_alert("id1", received_at=t))
-    s.set_alert(make_alert("id2", received_at=t + timedelta(seconds=GROUP_WINDOW_SECONDS + 1)))
-    assert len(s.groups) == 2
+    s.set_alert(make_alert("id2", received_at=t + timedelta(seconds=3600)))
+    assert len(s.groups) == 1
 
 
 def test_different_cat_creates_new_group() -> None:

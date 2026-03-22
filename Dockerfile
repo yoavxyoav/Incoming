@@ -2,16 +2,19 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install uv
-RUN pip install uv --no-cache-dir
+# Install uv + curl (for healthcheck)
+RUN pip install uv --no-cache-dir && \
+    apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
 RUN uv pip install --system --no-cache ".[notify,mqtt]"
 
 COPY app/ ./app/
 COPY frontend/ ./frontend/
+COPY data/ ./data/
 
-RUN mkdir -p logs data
+RUN mkdir -p logs
 
 EXPOSE 8000
 

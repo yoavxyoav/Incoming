@@ -8,9 +8,6 @@ from app.config import settings
 from app.logger import log
 from app.models import AlertEvent, AlertGroup
 
-# Re-exported for backwards-compat with tests
-GROUP_WINDOW_SECONDS = settings.group_window_seconds
-
 
 def _merge_categorized(
     a: dict[str, list[str]], b: dict[str, list[str]]
@@ -90,8 +87,7 @@ class AlertStore:
         # Regular (non-ended) alert — merge into current group or start a new one.
         if self._groups and not self._groups[0].is_ended:
             last = self._groups[0]
-            delta = (event.received_at - last.to_time).total_seconds()
-            if last.cat == event.cat and delta <= settings.group_window_seconds:
+            if last.cat == event.cat:
                 self._groups[0] = AlertGroup(
                     cat=last.cat,
                     cat_label=last.cat_label,
@@ -147,24 +143,38 @@ class AlertStore:
         """Return list of currently active category keys."""
         return list(self._active.keys())
 
-    def end_all_active_groups(self, at: datetime) -> bool:
+    def end_all_active_groups(self, at: datetime, explicitly: bool = False) -> bool:
         """Mark all non-ended groups as ended (used when Oref goes quiet)."""
         changed = False
         for i, g in enumerate(self._groups):
             if not g.is_ended:
-                self._groups[i] = g.model_copy(update={"is_ended": True, "to_time": at})
+                self._groups[i] = g.model_copy(update={"is_ended": True, "to_time": at, "explicitly_ended": explicitly})
                 changed = True
         if changed:
-            log.info("Marked all non-ended groups as ended at=%s", at.isoformat())
+            log.info("Marked all non-ended groups as ended at=%s explicitly=%s", at.isoformat(), explicitly)
         return changed
 
-    def end_group_for_cat(self, cat: str, at: datetime) -> None:
-        """Mark the most recent non-ended group for a specific cat as ended."""
+    def end_group_for_cat(self, cat: str, at: datetime, explicitly: bool = True) -> None:
+        """Mark the most recent non-ended group for a specific cat as ended.
+
+        If explicitly=True and the most recent group is already ended but not explicitly
+        (i.e. was auto-timed-out), upgrade it to explicitly_ended so the UI shows הסתיים
+        instead of פג תוקף.
+        """
         for i, g in enumerate(self._groups):
-            if g.cat == cat and not g.is_ended:
-                self._groups[i] = g.model_copy(update={"is_ended": True, "to_time": at})
-                log.info("Marked group ended for cat=%s at=%s", cat, at.isoformat())
+            if g.cat != cat:
+                continue
+            if not g.is_ended:
+                self._groups[i] = g.model_copy(update={"is_ended": True, "to_time": at, "explicitly_ended": explicitly})
+                log.info("Marked group ended for cat=%s at=%s explicitly=%s", cat, at.isoformat(), explicitly)
                 return
+            if explicitly and not g.explicitly_ended:
+                # Upgrade auto-timed-out group to explicitly ended
+                self._groups[i] = g.model_copy(update={"explicitly_ended": True})
+                log.info("Upgraded group to explicitly_ended for cat=%s", cat)
+                return
+            # Already ended and explicitly_ended — nothing to do
+            return
 
     def mark_ended(self, event_id: str, cat: str) -> None:
         """Record an all-clear event as seen and mark the cat as ended (dedup guard)."""

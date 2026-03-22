@@ -10,12 +10,11 @@ class Settings(BaseSettings):
 
     # Polling
     poll_interval: float = 1.0
-    clear_grace_polls: int = 3
+    auto_clear_minutes: int = 10
 
     # History / grouping
     max_history: int = 50
     max_groups: int = 50
-    group_window_seconds: int = 60
     all_clear_display_seconds: int = 300
 
 
